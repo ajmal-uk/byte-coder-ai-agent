@@ -8,7 +8,7 @@
     Code Smarter. Fix Faster. Build Better.
   </p>
   
-  [![Version](https://img.shields.io/badge/version-0.0.7-blue.svg)](https://marketplace.visualstudio.com/items?itemName=uthakkan.byte-coder-ai-agent)
+  [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://marketplace.visualstudio.com/items?itemName=uthakkan.byte-coder-ai-agent)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
   [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg)](https://code.visualstudio.com/)
 </div>
