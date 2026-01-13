@@ -32,8 +32,23 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 case 'sendMessage':
                     await this.handleUserMessage(data.value);
                     break;
+                case 'insertCode':
+                    await this.handleInsertCode(data.value);
+                    break;
             }
         });
+    }
+
+    private async handleInsertCode(code: string) {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            await editor.edit(editBuilder => {
+                editBuilder.insert(editor.selection.active, code);
+            });
+            vscode.window.showInformationMessage('Code inserted!');
+        } else {
+            vscode.window.showErrorMessage('No active editor found to insert code.');
+        }
     }
 
     public clearChat() {
@@ -208,14 +223,39 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                     align-self: flex-start;
                     border-bottom-left-radius: 2px;
                 }
-                .assistant pre {
+                
+                /* Code Blocks */
+                .code-block {
+                    margin-top: 10px;
                     background: var(--vscode-textBlockQuote-background);
-                    padding: 10px;
-                    border-radius: 6px;
-                    overflow-x: auto;
-                    margin-top: 8px;
                     border: 1px solid var(--border-color);
+                    border-radius: 6px;
+                    overflow: hidden;
                 }
+                .code-header {
+                    display: flex;
+                    justify-content: flex-end;
+                    padding: 4px 8px;
+                    background: rgba(0,0,0,0.1);
+                    border-bottom: 1px solid var(--border-color);
+                    gap: 8px;
+                }
+                .code-header button {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-color);
+                    font-size: 11px;
+                    cursor: pointer;
+                    opacity: 0.7;
+                }
+                .code-header button:hover { opacity: 1; color: var(--accent-color); }
+                .code-content {
+                    padding: 10px;
+                    overflow-x: auto;
+                    font-family: 'Courier New', Courier, monospace;
+                    white-space: pre;
+                }
+
                 .input-area {
                     padding: 15px;
                     background: var(--bg-color);
@@ -260,16 +300,16 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         </head>
         <body>
             <div class="header">
-                <h3>Byte Coder v2.0</h3>
+                <h3>Byte Coder v2.1</h3>
                 <span class="status-badge">ONLINE</span>
             </div>
             <div class="chat-container" id="chat">
                 <div class="message assistant">
-                    <strong>👋 Byte Coder v2.0 Online.</strong><br><br>
-                    <strong>New Features:</strong><br>
+                    <strong>👋 Byte Coder v2.1 Online.</strong><br><br>
+                    <strong>Interactive Mode:</strong><br>
                     • Mention files: <code>@filename</code><br>
                     • Agents: <code>/plan</code>, <code>/fix</code><br>
-                    • Or just ask to start coding!
+                    • <strong>NEW:</strong> One-click Insert Code! ⚡
                 </div>
             </div>
             <div class="input-area">
@@ -284,6 +324,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 const input = document.getElementById('input');
                 const sendBtn = document.getElementById('sendBtn');
                 let currentAssistantMessageDiv = null;
+                let buffer = "";
 
                 function sendMessage() {
                     const text = input.value;
@@ -292,6 +333,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                     vscode.postMessage({ type: 'sendMessage', value: text });
                     input.value = '';
                     currentAssistantMessageDiv = null;
+                    buffer = "";
                 }
 
                 input.addEventListener('keypress', (e) => {
@@ -304,10 +346,12 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                     const message = event.data;
                     switch (message.type) {
                         case 'addResponse':
-                            updateAssistantMessage(message.value);
+                            buffer += message.value;
+                            updateAssistantMessage(buffer);
                             break;
                         case 'clearChat':
                             chat.innerHTML = '';
+                            buffer = "";
                             break;
                     }
                 });
@@ -315,7 +359,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 function addMessage(role, text) {
                     const div = document.createElement('div');
                     div.className = 'message ' + role;
-                    div.innerHTML = text.replace(/\\n/g, '<br>');
+                    div.innerHTML = formatText(text);
                     chat.appendChild(div);
                     chat.scrollTop = chat.scrollHeight;
                 }
@@ -326,8 +370,42 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                         currentAssistantMessageDiv.className = 'message assistant';
                         chat.appendChild(currentAssistantMessageDiv);
                     }
-                    currentAssistantMessageDiv.innerText = text; 
+                    currentAssistantMessageDiv.innerHTML = formatText(text); 
                     chat.scrollTop = chat.scrollHeight;
+                }
+
+                function formatText(text) {
+                    // Detect Code Blocks
+                    const codeBlockRegex = /\`\`\`([\s\S]*?)\`\`\`/g;
+                    
+                    return text.replace(codeBlockRegex, (match, code) => {
+                        const cleanCode = code.replace(/^[a-z]+\n/, ''); // Remove language identifier if present
+                        // Escape HTML in code
+                        const safeCode = cleanCode.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                        const rawCode = cleanCode.replace(/"/g, "&quot;");
+                        
+                        return \`<div class="code-block">
+                                    <div class="code-header">
+                                        <button onclick="copyCode(this)">Copy</button>
+                                        <button onclick="insertCode(this)">Insert</button>
+                                        <div style="display:none" class="raw-code">\${safeCode}</div>
+                                    </div>
+                                    <div class="code-content">\${safeCode}</div>
+                                </div>\`;
+                    }).replace(/\\n/g, '<br>');
+                }
+
+                window.copyCode = (btn) => {
+                    const code = btn.nextElementSibling.nextElementSibling.innerText;
+                    navigator.clipboard.writeText(code);
+                    const original = btn.innerText;
+                    btn.innerText = "Copied!";
+                    setTimeout(() => btn.innerText = original, 2000);
+                }
+
+                window.insertCode = (btn) => {
+                    const code = btn.nextElementSibling.innerText;
+                     vscode.postMessage({ type: 'insertCode', value: code });
                 }
             </script>
         </body>
