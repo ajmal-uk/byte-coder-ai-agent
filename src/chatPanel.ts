@@ -143,100 +143,171 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Byte AI</title>
             <style>
+                :root {
+                    --bg-color: var(--vscode-sideBar-background);
+                    --text-color: var(--vscode-sideBar-foreground);
+                    --input-bg: var(--vscode-input-background);
+                    --input-fg: var(--vscode-input-foreground);
+                    --border-color: var(--vscode-panel-border);
+                    --accent-color: var(--vscode-button-background);
+                    --accent-fg: var(--vscode-button-foreground);
+                }
                 body {
                     font-family: var(--vscode-font-family);
                     padding: 0;
                     margin: 0;
-                    color: var(--vscode-editor-foreground);
-                    background-color: var(--vscode-sideBar-background);
-                }
-                .chat-container {
+                    background-color: var(--bg-color);
+                    color: var(--text-color);
                     display: flex;
                     flex-direction: column;
-                    gap: 15px;
+                    height: 100vh;
+                    overflow: hidden;
+                }
+                .header {
                     padding: 15px;
-                    padding-bottom: 60px; /* Space for input */
+                    border-bottom: 1px solid var(--border-color);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    background: var(--bg-color);
+                    z-index: 10;
+                }
+                .header h3 {
+                    margin: 0;
+                    font-size: 14px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .status-badge {
+                    font-size: 10px;
+                    background: var(--vscode-badge-background);
+                    color: var(--vscode-badge-foreground);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                }
+                .chat-container {
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 15px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 16px;
                 }
                 .message {
                     padding: 12px 16px;
-                    border-radius: 12px;
+                    border-radius: 8px;
                     position: relative;
                     word-wrap: break-word;
                     line-height: 1.5;
                     font-size: 13px;
+                    max-width: 90%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
                 }
                 .user {
-                    background: var(--vscode-button-background);
-                    color: var(--vscode-button-foreground);
+                    background: var(--accent-color);
+                    color: var(--accent-fg);
                     align-self: flex-end;
-                    max-width: 85%;
                     border-bottom-right-radius: 2px;
                 }
                 .assistant {
                     background: var(--vscode-editor-background);
-                    border: 1px solid var(--vscode-widget-border);
+                    border: 1px solid var(--border-color);
                     align-self: flex-start;
-                    max-width: 90%;
                     border-bottom-left-radius: 2px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
                 .assistant pre {
                     background: var(--vscode-textBlockQuote-background);
-                    padding: 8px;
-                    border-radius: 4px;
+                    padding: 10px;
+                    border-radius: 6px;
                     overflow-x: auto;
+                    margin-top: 8px;
+                    border: 1px solid var(--border-color);
+                }
+                .input-area {
+                    padding: 15px;
+                    background: var(--bg-color);
+                    border-top: 1px solid var(--border-color);
                 }
                 .input-container {
-                    position: fixed;
-                    bottom: 0;
-                    left: 0;
-                    right: 0;
-                    background: var(--vscode-sideBar-background);
-                    padding: 15px;
-                    border-top: 1px solid var(--vscode-panel-border);
                     display: flex;
+                    background: var(--input-bg);
+                    border: 1px solid var(--vscode-input-border);
+                    border-radius: 6px;
+                    padding: 4px; /* Padding for border effect */
+                }
+                .input-container:focus-within {
+                    border-color: var(--vscode-focusBorder);
+                    box-shadow: 0 0 0 1px var(--vscode-focusBorder);
                 }
                 input {
                     flex: 1;
                     padding: 10px;
-                    background: var(--vscode-input-background);
-                    color: var(--vscode-input-foreground);
-                    border: 1px solid var(--vscode-input-border);
-                    border-radius: 4px;
+                    background: transparent;
+                    color: var(--input-fg);
+                    border: none;
                     outline: none;
+                    font-family: inherit;
+                    font-size: 13px;
                 }
-                input:focus {
-                    border-color: var(--vscode-focusBorder);
+                .btn-send {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-color);
+                    cursor: pointer;
+                    padding: 0 10px;
+                    opacity: 0.7;
+                    display: flex;
+                    align-items: center;
                 }
+                .btn-send:hover { opacity: 1; color: var(--accent-color); }
+                /* Custom Scrollbar */
+                ::-webkit-scrollbar { width: 4px; }
+                ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+                ::-webkit-scrollbar-track { background: transparent; }
             </style>
         </head>
         <body>
+            <div class="header">
+                <h3>Byte Coder Agent</h3>
+                <span class="status-badge">ONLINE</span>
+            </div>
             <div class="chat-container" id="chat">
                 <div class="message assistant">
-                    <strong>👋 Hello! I am Byte Coder Ai Agent.</strong><br><br>
-                    I am ready to help you write code, fix bugs, and analyze your project.<br>
-                    Try commands like <code>/explain</code>, <code>/fix</code>, or just ask me anything!
+                    <strong>🚀 System Ready.</strong><br>
+                    I am your Senior Architect. <br><br>
+                    Use <code>/fix</code> to repair errors.<br>
+                    Use <code>/explain</code> to understand logic.<br>
+                    Or just ask.
                 </div>
             </div>
-            <div class="input-container">
-                 <input type="text" id="input" placeholder="Ask Byte Coder Agent..." />
+            <div class="input-area">
+                <div class="input-container">
+                    <input type="text" id="input" placeholder="Ask anything..." autocomplete="off"/>
+                    <button class="btn-send" id="sendBtn">➤</button>
+                </div>
             </div>
             <script>
                 const vscode = acquireVsCodeApi();
                 const chat = document.getElementById('chat');
                 const input = document.getElementById('input');
+                const sendBtn = document.getElementById('sendBtn');
                 let currentAssistantMessageDiv = null;
 
+                function sendMessage() {
+                    const text = input.value;
+                    if (!text) return;
+                    addMessage('user', text);
+                    vscode.postMessage({ type: 'sendMessage', value: text });
+                    input.value = '';
+                    currentAssistantMessageDiv = null;
+                }
+
                 input.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        const text = input.value;
-                        if (!text) return;
-                        addMessage('user', text);
-                        vscode.postMessage({ type: 'sendMessage', value: text });
-                        input.value = '';
-                        currentAssistantMessageDiv = null;
-                    }
+                    if (e.key === 'Enter') sendMessage();
                 });
+                
+                sendBtn.addEventListener('click', sendMessage);
 
                 window.addEventListener('message', event => {
                     const message = event.data;
@@ -253,9 +324,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 function addMessage(role, text) {
                     const div = document.createElement('div');
                     div.className = 'message ' + role;
-                    div.innerText = text;
+                    div.innerHTML = text.replace(/\\n/g, '<br>'); // Simple formatting
                     chat.appendChild(div);
-                    window.scrollTo(0, document.body.scrollHeight);
+                    chat.scrollTop = chat.scrollHeight;
                 }
 
                 function updateAssistantMessage(text) {
@@ -265,7 +336,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                         chat.appendChild(currentAssistantMessageDiv);
                     }
                     currentAssistantMessageDiv.innerText = text; 
-                    window.scrollTo(0, document.body.scrollHeight);
+                    chat.scrollTop = chat.scrollHeight;
                 }
             </script>
         </body>

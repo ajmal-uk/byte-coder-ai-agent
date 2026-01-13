@@ -10,6 +10,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.registerWebviewViewProvider(ChatPanel.viewType, provider)
     );
 
+    // Auto-focus the chat view on load
+    vscode.commands.executeCommand('byteAI.chatView.focus');
+
     context.subscriptions.push(
         vscode.commands.registerCommand('byteAI.clearChat', () => {
             provider.clearChat();
