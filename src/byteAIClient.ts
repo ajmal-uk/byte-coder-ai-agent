@@ -11,12 +11,16 @@ export class ByteAIClient {
     private wsUrl = "wss://backend.buildpicoapps.com/api/chatbot/chat";
     private appId = "plan-organization";
     private chatId: string;
+    private _ws?: WebSocket;
 
     constructor() {
         this.chatId = uuidv4();
     }
 
     public async streamResponse(userInput: string, onChunk: (chunk: string) => void, onError: (err: any) => void): Promise<string> {
+        // Close existing connection if any
+        this.disconnect();
+
         return new Promise((resolve, reject) => {
             const payload = {
                 chatId: this.chatId,
@@ -25,13 +29,15 @@ export class ByteAIClient {
                 message: userInput
             };
 
-            const ws = new WebSocket(this.wsUrl, {
+            this._ws = new WebSocket(this.wsUrl, {
                 headers: {
                     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                     "Origin": "null"
                 },
-                rejectUnauthorized: false // Equivalent to ssl.CERT_NONE in Python
+                rejectUnauthorized: false
             });
+
+            const ws = this._ws; // Local reference for closure safety
 
             ws.on('open', () => {
                 ws.send(JSON.stringify(payload));
@@ -54,5 +60,12 @@ export class ByteAIClient {
                 resolve(fullResponse);
             });
         });
+    }
+
+    public disconnect() {
+        if (this._ws) {
+            this._ws.terminate();
+            this._ws = undefined;
+        }
     }
 }

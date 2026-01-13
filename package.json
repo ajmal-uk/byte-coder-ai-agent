@@ -14,7 +14,7 @@
         "type": "git",
         "url": "https://github.com/ajmal-uk/byte-coder-ai-agent"
     },
-    "version": "1.0.0",
+    "version": "1.1.0",
     "engines": {
         "vscode": "^1.85.0"
     },
