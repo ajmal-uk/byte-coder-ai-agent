@@ -1,4 +1,5 @@
-# Byte Coder Ai Agent 🚀
+# <img src="images/logo.png" width="40" height="40" align="center" /> Byte Coder - Agentic AI Coding Agent
+**The Ultimate Agentic AI for VS Code.**
 ### 🎨 4. Premium Experience
 - **"App-Like" UI**: A beautiful, dark-mode optimized interface that feels like a native part of VS Code.
 - **Sidekick Mode**: Dock it to the right sidebar for a true "Pair Programmer" experience.

@@ -1,8 +1,12 @@
 {
     "name": "byte-coder-ai-agent",
-    "displayName": "Byte Coder Ai Agent",
-    "description": "Your All-in-One AI Coding Companion. Smart Chat, Auto-Debugging, Code Explanation, and Multi-Agent Planning. The free alternative to Copilot.",
+    "displayName": "Byte Coder - Agentic AI Coding Agent",
+    "description": "The Top-Rated Agentic AI for VS Code. Autonomous Coding, Deep Debugging, and Self-Healing Plans. Better than Copilot.",
     "icon": "images/logo.png",
+    "galleryBanner": {
+        "color": "#050608",
+        "theme": "dark"
+    },
     "publisher": "uthakkan",
     "author": {
         "name": "UTHAKKAN (Ajmal U K)",
@@ -14,37 +18,36 @@
         "type": "git",
         "url": "https://github.com/ajmal-uk/byte-coder-ai-agent"
     },
-    "version": "1.1.0",
+    "version": "1.2.0",
     "engines": {
         "vscode": "^1.85.0"
     },
     "categories": [
         "AI",
         "Programming Languages",
-        "Snippets",
         "Machine Learning",
-        "Education"
+        "Education",
+        "Snippets"
     ],
     "keywords": [
-        "ai",
+        "agentic",
+        "autonomous",
+        "ai agent",
+        "cursor",
+        "devin",
+        "cline",
         "copilot",
-        "chatgpt",
         "gpt-4",
+        "deepseek",
+        "claude",
         "pair programmer",
-        "code assistant",
-        "debug",
-        "refactor",
-        "intellisense",
-        "autocomplete",
+        "debugging",
+        "automation",
         "python",
         "javascript",
         "typescript",
-        "java",
-        "c++",
-        "planner",
-        "agent",
-        "free ai",
-        "coding bot"
+        "chatgpt",
+        "free ai"
     ],
     "activationEvents": [],
     "main": "./out/extension.js",
