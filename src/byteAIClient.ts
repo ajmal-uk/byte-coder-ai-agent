@@ -1,6 +1,5 @@
 import * as WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
-import { SYSTEM_PROMPT } from './prompts';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';
@@ -30,7 +29,7 @@ export class ByteAIClient {
             const payload = {
                 chatId: this.chatId,
                 appId: this.appId,
-                systemPrompt: SYSTEM_PROMPT,
+                systemPrompt: "", // Set to empty to avoid backend validation issues
                 message: userInput
             };
 
