@@ -17,6 +17,11 @@ export class ByteAIClient {
         this.chatId = uuidv4();
     }
 
+    public resetSession() {
+        this.chatId = uuidv4();
+        this.disconnect();
+    }
+
     public async streamResponse(userInput: string, onChunk: (chunk: string) => void, onError: (err: any) => void): Promise<string> {
         // Close existing connection if any
         this.disconnect();

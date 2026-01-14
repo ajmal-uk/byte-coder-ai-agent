@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ChatPanel } from './ChatPanel';
+import { ChatPanel } from './ChatViewProvider';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Byte AI Coding Assistant is now active!');
@@ -28,6 +28,18 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('byteAI.fixCode', () => {
             provider.runCommand('fix');
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('byteAI.refactorCode', () => {
+            provider.runCommand('refactor');
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('byteAI.generateTest', () => {
+            provider.runCommand('test');
         })
     );
 
