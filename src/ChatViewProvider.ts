@@ -371,7 +371,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             </div>
             <div class="chat-container" id="chat">
                  <div class="message assistant">
-                    <strong>Byte Coder v1.3 Online.</strong><br>
+                    <strong>Byte Coder v1.0 Online.</strong><br>
                     I'm ready to help you code.
                 </div>
             </div>
