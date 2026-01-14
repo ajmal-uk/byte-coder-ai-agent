@@ -4,7 +4,7 @@ import { ChatPanel } from './ChatViewProvider';
 export function activate(context: vscode.ExtensionContext) {
     console.log('Byte AI Coding Assistant is now active!');
 
-    const provider = new ChatPanel(context.extensionUri);
+    const provider = new ChatPanel(context.extensionUri, context);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(ChatPanel.viewType, provider)

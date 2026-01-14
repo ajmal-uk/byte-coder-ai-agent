@@ -13,11 +13,11 @@ export class TerminalManager {
     }
 
     public async processAndExecute(text: string): Promise<boolean> {
-        const regex = /\$\$ EXEC: (.*?) \$\$/g;
+        // Regex to capture multiline commands
+        const regex = /\$\$ EXEC: ([\s\S]*?) \$\$/g;
         let match;
         let executed = false;
 
-        // Using a while loop to handle multiple commands if present (though prompt asks for one likely)
         while ((match = regex.exec(text)) !== null) {
             const command = match[1].trim();
             if (command) {
@@ -30,17 +30,16 @@ export class TerminalManager {
 
     private async askAndExecute(command: string) {
         const selection = await vscode.window.showInformationMessage(
-            `Byte AI wants to execute: "${command}"`,
-            "Allow",
-            "Deny"
+            `Byte AI wants to execute terminal command:`,
+            { modal: true, detail: command },
+            "Execute",
+            "Cancel"
         );
 
-        if (selection === "Allow") {
+        if (selection === "Execute") {
             const terminal = this.getTerminal();
             terminal.show();
             terminal.sendText(command);
-        } else {
-            vscode.window.showWarningMessage(`Command "${command}" blocked by user.`);
         }
     }
 }

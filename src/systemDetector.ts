@@ -11,10 +11,9 @@ export class SystemDetector {
 
     public static getShell(): string {
         const platform = os.platform();
-        if (platform === 'win32') return 'cmd.exe / PowerShell';
-        if (platform === 'darwin' || platform === 'linux') {
-            return process.env.SHELL || '/bin/bash';
-        }
+        if (platform === 'win32') return 'PowerShell / CMD';
+        if (platform === 'darwin') return 'Zsh / Bash (macOS)';
+        if (platform === 'linux') return 'Bash / Sh (Linux)';
         return 'Unknown';
     }
 
