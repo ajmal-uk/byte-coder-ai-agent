@@ -68,7 +68,7 @@
                 {
                     "id": "byte-ai-sidebar",
                     "title": "Byte AI",
-                    "icon": "images/icon.svg"
+                    "icon": "images/sidebar.svg"
                 }
             ]
         },
@@ -78,7 +78,7 @@
                     "type": "webview",
                     "id": "byteAI.chatView",
                     "name": "Chat",
-                    "icon": "images/logo.png"
+                    "icon": "images/sidebar.svg"
                 }
             ]
         },

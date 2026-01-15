@@ -69,12 +69,62 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                     }
                     break;
                 case 'getFiles':
-                    const files = await vscode.workspace.findFiles('**/*.*', '**/node_modules/**', 100);
-                    const fileItems = files.map(f => ({
-                        path: vscode.workspace.asRelativePath(f),
-                        fullPath: f.fsPath
-                    }));
-                    this._view?.webview.postMessage({ type: 'fileList', files: fileItems });
+                    const query = data.query ? data.query.toLowerCase() : '';
+                    // Search for files (limit to 1000 to keep it fast but broad)
+                    const allFiles = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**}', 1000);
+
+                    const scoredFiles = allFiles.map(f => {
+                        const relativePath = vscode.workspace.asRelativePath(f);
+                        const fileName = relativePath.split('/').pop() || '';
+                        const lowerPath = relativePath.toLowerCase();
+                        const lowerName = fileName.toLowerCase();
+
+                        let score = 0;
+                        if (!query) {
+                            score = 1; // Default visibility
+                        } else {
+                            // Exact filename match
+                            if (lowerName === query) score = 100;
+                            // Exact path match
+                            else if (lowerPath === query) score = 90;
+                            // Filename starts with query
+                            else if (lowerName.startsWith(query)) score = 80;
+                            // Path contains query
+                            else if (lowerPath.includes(query)) score = 50;
+                            else {
+                                // Fuzzy match: characters must appear in order
+                                let qIdx = 0;
+                                let pIdx = 0;
+                                let matchCount = 0;
+                                while (qIdx < query.length && pIdx < lowerPath.length) {
+                                    if (lowerPath[pIdx] === query[qIdx]) {
+                                        matchCount++;
+                                        qIdx++;
+                                    }
+                                    pIdx++;
+                                }
+                                // Only count if we matched most of the query
+                                if (matchCount === query.length) score = 20;
+                            }
+                        }
+                        return { file: f, path: relativePath, score };
+                    });
+
+                    // Sort: Descending score, then shorter paths, then alphabetical
+                    const filteredFiles = scoredFiles
+                        .filter(x => x.score > 0)
+                        .sort((a, b) => {
+                            if (a.score !== b.score) return b.score - a.score;
+                            if (a.path.length !== b.path.length) return a.path.length - b.path.length;
+                            return a.path.localeCompare(b.path);
+                        })
+                        .slice(0, 50) // Return top 50
+                        .map(x => ({
+                            path: x.path,
+                            fullPath: x.file.fsPath
+                        }));
+
+                    this._view?.webview.postMessage({ type: 'fileList', files: filteredFiles });
                     break;
                 case 'stopGeneration':
                     this._client.disconnect();
@@ -109,11 +159,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         }
 
         const prompts: { [key: string]: string } = {
-            'explain': "Explain the following code:\n\n```\n" + text + "\n```",
-            'fix': "Fix any bugs in the following code:\n\n```\n" + text + "\n```",
-            'refactor': "Refactor the following code:\n\n```\n" + text + "\n```",
-            'test': "Generate unit tests for the following code:\n\n```\n" + text + "\n```",
-            'doc': "Generate documentation for the following code:\n\n```\n" + text + "\n```"
+            'explain': "Act as a Senior Software Architect. Deeply analyze the following code. Explain its logical flow, architectural pattern, potential side effects, and any performance bottlenecks. Use clear headings and bullet points.\n\nCode:\n```\n" + text + "\n```",
+            'fix': "Act as an Expert Debugger. Analyze the following code for bugs, race conditions, memory leaks, and logical errors. Fix the issues and explain the root cause of each bug. Provide the corrected code block.\n\nCode:\n```\n" + text + "\n```",
+            'refactor': "Act as a Clean Code Expert. Refactor the following code to strictly follow SOLID principles, DRY, and modern best practices (ES6+ for JS/TS). Improve readability, maintainability, and efficiency. Explain the key improvements made.\n\nCode:\n```\n" + text + "\n```",
+            'test': "Generate comprehensive unit tests for the following code. Cover happy paths, edge cases, and potential failure modes. Use modern testing frameworks (e.g., Jest/Vitest for JS, Pytest for Python). Mock external dependencies where appropriate.\n\nCode:\n```\n" + text + "\n```",
+            'doc': "Generate professional, industry-standard documentation (e.g., JSDoc/TSDoc/Docstring) for the following code. Include parameter descriptions, return values, exceptions, and usage examples.\n\nCode:\n```\n" + text + "\n```"
         };
 
         const message = text ? prompts[command] : `/${command}`;
@@ -591,21 +641,48 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 .file-popup {
                     position: absolute; bottom: 100%; left: 0; right: 0;
                     background: var(--bg-app); border: 1px solid var(--border);
-                    border-radius: 12px; padding: 8px; margin-bottom: 8px;
+                    border-radius: 12px; padding: 6px; margin-bottom: 8px;
                     box-shadow: 0 -8px 32px rgba(0,0,0,0.2);
-                    max-height: 200px; overflow-y: auto;
-                    display: none;
+                    max-height: 240px; overflow-y: auto;
+                    display: none; animation: slideUp 0.15s ease-out;
                 }
                 .file-popup.show { display: block; }
+
                 .file-item {
-                    padding: 8px 12px; border-radius: 6px; cursor: pointer;
-                    display: flex; align-items: center; gap: 8px;
-                    font-size: 12px; color: var(--text-secondary);
-                    transition: all 0.15s ease;
+                    padding: 6px 10px; border-radius: 6px; cursor: pointer;
+                    display: flex; align-items: center; gap: 10px;
+                    font-size: 13px; color: var(--text-secondary);
+                    transition: all 0.1s ease;
                 }
                 .file-item:hover, .file-item.selected { background: var(--bg-hover); color: var(--text-primary); }
                 .file-item.selected { outline: 1px solid var(--accent); }
-                .file-icon { font-size: 14px; }
+                
+                .file-icon { 
+                    font-size: 16px; width: 16px; height: 16px; 
+                    display: flex; align-items: center; justify-content: center;
+                    opacity: 0.8;
+                }
+                
+                .file-info {
+                    display: flex; flex-direction: column; overflow: hidden;
+                }
+                .file-name {
+                    font-weight: 500; font-size: 13px; color: var(--text-primary);
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                }
+                .file-path {
+                    font-size: 10px; color: var(--text-secondary); opacity: 0.7;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                }
+                
+                /* Icon Colors */
+                .icon-ts { color: #3178c6; }
+                .icon-js { color: #f7df1e; }
+                .icon-json { color: #f1c40f; }
+                .icon-md { color: #adadad; }
+                .icon-css { color: #264de4; }
+                .icon-html { color: #e34c26; }
+                .icon-py { color: #3572A5; }
 
             </style>
         </head>
@@ -723,9 +800,10 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 }
                 
                 // Debounced file search
+                // Debounced file search (Faster)
                 const debouncedFileSearch = debounce((query) => {
                     vscode.postMessage({ type: 'getFiles', query: query });
-                }, 150);
+                }, 100);
 
                 // Auto-resize & Input Handler
                 messageInput.addEventListener('input', function() {
@@ -1144,17 +1222,44 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
                 function renderFiles(files) {
                     filePopup.innerHTML = '';
-                    if (files.length === 0) {
+                    if (!files || files.length === 0) {
                         filePopup.classList.remove('show');
                         return;
                     }
                     
-                    files.forEach(file => {
+                    files.forEach((file, index) => {
                         const div = document.createElement('div');
                         div.className = 'file-item';
+                        if (index === selectedFileIndex) div.classList.add('selected');
+
+                        // Determine Icon
+                        const ext = file.path.split('.').pop().toLowerCase();
+                        let iconChar = '📄';
+                        let iconClass = 'file-icon';
+                        
+                        // Simple icon mapping
+                        switch(ext) {
+                            case 'ts': case 'tsx': iconChar = '{}'; iconClass += ' icon-ts'; break;
+                            case 'js': case 'jsx': iconChar = '{}'; iconClass += ' icon-js'; break;
+                            case 'json': iconChar = '{}'; iconClass += ' icon-json'; break;
+                            case 'md': iconChar = 'M↓'; iconClass += ' icon-md'; break;
+                            case 'css': case 'scss': iconChar = '#'; iconClass += ' icon-css'; break;
+                            case 'html': iconChar = '<>'; iconClass += ' icon-html'; break;
+                            case 'py': iconChar = 'py'; iconClass += ' icon-py'; break;
+                            case 'png': case 'svg': case 'jpg': iconChar = '🖼️'; break;
+                        }
+
+                        // Split path for display
+                        const pathParts = file.path.split('/');
+                        const fileName = pathParts.pop();
+                        const dirPath = pathParts.join('/');
+
                         div.innerHTML = \`
-                            <span class="file-icon">📄</span>
-                            <span>\${file.path}</span>
+                            <span class="\${iconClass}">\${iconChar}</span>
+                            <div class="file-info">
+                                <span class="file-name">\${fileName}</span>
+                                <span class="file-path">\${dirPath || './'}</span>
+                            </div>
                         \`;
                         div.onclick = () => {
                             // Use cursor-aware replacement
@@ -1167,11 +1272,16 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                             const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
                             const beforeAt = lastSpaceIndex === -1 ? '' : textBeforeCursor.substring(0, lastSpaceIndex + 1);
                             
+                            // Insert formatted file tag: @[path] for cleaner parsing if you want, 
+                            // or just @path. User mentioned "@[images/logo.png]" earlier.
+                            // Let's stick to simple path for now, or match user preference.
+                            // Actually, let's just insert the path, standard logic.
                             messageInput.value = beforeAt + '@' + file.path + ' ' + textAfterCursor.trim();
+                            
                             filePopup.classList.remove('show');
                             messageInput.focus();
                             
-                            // Set cursor position after the inserted file
+                            // Set cursor position
                             const newPos = beforeAt.length + file.path.length + 2;
                             messageInput.setSelectionRange(newPos, newPos);
                         };

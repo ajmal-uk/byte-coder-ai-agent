@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="images/logo.png" width="120" height="120" />
+  <img src="images/logo.png" width="128" height="128" alt="Byte Coder AI Logo" />
   <h1>Byte Coder AI Agent</h1>
   <p>
     <b>The Ultimate Premium AI Coding Companion for VS Code</b>
@@ -12,60 +12,63 @@
 
 <br />
 
-> **Byte Coder** transforms your VS Code environment into an intelligent, AI-powered development studio. With a focus on **premium aesthetics** and **powerful autonomous capabilities**, it acts as your expert pair programmer, ready to explain, fix, refactor, and generating tests at the speed of thought.
+> **Byte Coder** transforms your VS Code environment into an intelligent, autonomous development studio. Meticulously designed with **premium aesthetics** and **deep codebase understanding**, it serves as your expert pair programmer—ready to explain, fix, refactor, and generate tests at the speed of thought.
 
 ---
 
 ## ✨ Why Byte Coder?
 
-Byte Coder isn't just another AI extension. It's designed for developers who demand **elegance and efficiency**.
+Byte Coder isn't just another AI extension. It is a **premium experience** designed for developers who value elegance, efficiency, and intelligence.
 
-### 💎 Premium Design Philosophy
-We believe dev tools should be beautiful.
-- **Glassmorphism UI**: A stunning, translucent interface that feels native to modern OS aesthetics.
-- **Typography First**: meticulously tuned font stacks using `Inter` and `JetBrains Mono` for superior readability.
-- **Fluid Animations**: Every interaction is animated for a smooth, responsive feel.
+### 💎 Design Philosophy
+We believe developer tools should be beautiful and unobtrusive.
+- **Glassmorphism UI**: A stunning, translucent interface that adapts to your environment.
+- **Dynamic Theming**: Seamlessly blends with Light, Dark, and High Contrast VS Code themes.
+- **Typography First**: Tuned font stacks using `Inter` and `JetBrains Mono` for superior readability.
 
-### ⚡ Intelligent Capabilities
-- **Deep Code Understanding**: Select any code snippet and ask complex questions.
-- **One-Click Actions**: Explain, Fix, Refactor, and Test with dedicated, contextual commands.
-- **Session Management**: Never lose context. Your chat history is saved and organized in a beautiful slide-out drawer.
-- **Privacy Focused**: Your code stays yours. Usage is secure and direct.
+### ⚡ Advanced Capabilities
+- **Context-Aware**: Understands your workspace. Use **@ mentions** to reference files directly.
+- **Command Power**: Use **/** slash commands for rapid access to AI workflows.
+- **One-Click Actions**: Explain, Fix, Refactor, and Test with dedicated context menu items.
+- **Privacy Focused**: Your code stays yours. Secure, direct communication.
 
 ---
 
 ## 🚀 Key Features
 
-### 1. Smart Chat Interface
-Interact with your codebase using natural language. The chat interface is aware of your current context, making it easy to ask about open files or specific functions.
+### 1. 💬 Smart Chat & Context
+Interact with your codebase using natural language.
+- **File References**: Type `@` to select files and add them to context instantly.
+- **Slash Commands**: Type `/` to access quick actions like `/explain`, `/fix`, or `/clear`.
+- **Session History**: Never lose a thought. Access past conversations in a beautiful slide-out drawer.
 
-### 2. Contextual Quick Actions
-Right-click any selection in your editor to access powerful AI tools instantly:
+### 2. ⚡ Contextual Quick Actions
+Right-click any selection in your editor to access powerful AI tools:
 - **🕵️ Explain Code**: Get a breakdown of complex logic in plain English.
-- **🐛 Find Bugs**: detailed analysis of potential runtime errors or logical flaws.
+- **🐛 Find Bugs**: Detailed analysis of potential runtime errors or logical flaws.
 - **🔨 Refactor**: Modernize legacy code or improve performance with one click.
 - **🧪 Generate Tests**: Automatically create comprehensive unit tests (Jest, Mocha, PyTest, etc.).
 - **📝 Generate Docs**: Auto-generate JSDoc/Docstrings for your functions.
 
-### 3. History & Session Management
-Keep your work organized.
-- **Auto-Saving**: All conversations are saved locally.
-- **Session Drawer**: Easily browse past discussions, grouped by date.
-- **Search**: Find previous solutions instantly.
+### 3. 🎨 Adaptive UI
+The interface feels distinct yet native.
+- **Fluid Animations**: Smooth transitions for a responsive feel.
+- **Markdown Support**: Rich text rendering with syntax highlighting for code blocks.
+- **Responsive Layout**: Perfectly sized for any sidebar width.
 
 ---
 
 ## 🧠 Architecture
 
-Byte Coder leverages a streamlined architecture to bridge VS Code with advanced LLMs.
+Byte Coder leverages a streamlined, local-first architecture to bridge VS Code with advanced LLMs, ensuring speed and security.
 
 ```mermaid
 graph LR
-    A[User Selection] -->|Context| B(Byte AI Engine)
-    B -->|Stream Request| C{LLM Provider}
-    C -->|Token Stream| B
+    A[User Input] -->|@ Mention / Selection| B(Context Engine)
+    B -->|Enriched Prompt| C{LLM Provider}
+    C -->|Stream Response| B
     B -->|Live Update| D[Premium Chat UI]
-    D -->|User Interaction| A
+    D -->|Interaction| A
     style B fill:#007ACC,stroke:#fff,stroke-width:2px,color:#fff
     style D fill:#28a745,stroke:#fff,stroke-width:2px,color:#fff
 ```
@@ -74,9 +77,12 @@ graph LR
 
 ## 💻 Getting Started
 
-1.  **Install**: Get extension from the VS Code Marketplace.
-2.  **Open**: Click the <img src="images/logo.png" width="16" height="16"/> icon in your sidebar.
-3.  **Chat**: Start typing or use the `/` command menu for quick actions.
+1.  **Install**: Get the extension from the VS Code Marketplace.
+2.  **Open**: Click the <img src="images/logo.png" width="14" height="14"/> icon in your sidebar.
+3.  **Engage**:
+    - Type **@** to include a file.
+    - Right-click code to **Explain** or **Refactor**.
+    - Use **/** commands to control the flow.
 
 ---
 
