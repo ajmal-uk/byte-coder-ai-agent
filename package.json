@@ -2,7 +2,7 @@
     "name": "byte-coder-ai-agent",
     "displayName": "Byte Coder AI Agent",
     "description": "An advanced AI agent that can plan, architect, and execute code changes.",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "publisher": "uthalkkan",
     "icon": "images/logo.png",
     "galleryBanner": {

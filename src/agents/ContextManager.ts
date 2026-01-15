@@ -13,35 +13,43 @@ export class ContextManager {
     }
 
     /**
-     * Chunks a large string into token-sized parts, preserving line boundaries.
+     * Chunks a large string into token-sized parts, preserving logical boundaries (paragraphs) where possible.
      */
     public chunkContent(content: string, maxTokens: number = 2000): string[] {
         const charLimit = maxTokens * ContextManager.CHARS_PER_TOKEN;
         const chunks: string[] = [];
-        const lines = content.split('\n');
+
+        // Try to split by double newlines first (paragraphs/blocks)
+        let parts = content.split('\n\n');
+        // If that's too coarse (e.g. minified code), fall back to single lines
+        if (parts.length < 2) parts = content.split('\n');
 
         let currentChunk = "";
 
-        for (const line of lines) {
-            if ((currentChunk.length + line.length + 1) > charLimit) {
+        for (const part of parts) {
+            // Re-add the separator (approximation)
+            const segment = part + "\n\n";
+
+            if ((currentChunk.length + segment.length) > charLimit) {
                 if (currentChunk.length > 0) {
-                    chunks.push(currentChunk);
+                    chunks.push(currentChunk.trim());
                     currentChunk = "";
                 }
-                // If a single line is massive, split it hardly
-                if (line.length > charLimit) {
-                    for (let i = 0; i < line.length; i += charLimit) {
-                        chunks.push(line.substring(i, i + charLimit));
+
+                // If a single part is still massive, split strictly by chars
+                if (segment.length > charLimit) {
+                    for (let i = 0; i < segment.length; i += charLimit) {
+                        chunks.push(segment.substring(i, i + charLimit));
                     }
                 } else {
-                    currentChunk = line + "\n";
+                    currentChunk = segment;
                 }
             } else {
-                currentChunk += line + "\n";
+                currentChunk += segment;
             }
         }
 
-        if (currentChunk.length > 0) chunks.push(currentChunk);
+        if (currentChunk.length > 0) chunks.push(currentChunk.trim());
         return chunks;
     }
 

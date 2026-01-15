@@ -10,6 +10,9 @@ export class ByteAIClient {
     private wsUrl = "wss://backend.buildpicoapps.com/api/chatbot/chat";
     private appId = "plan-organization";
     private chatId: string;
+    private reconnectAttempts = 0;
+    private maxReconnectAttempts = 5;
+    private isConnected = false;
     private _ws?: WebSocket;
 
     constructor() {
@@ -19,18 +22,72 @@ export class ByteAIClient {
     public resetSession() {
         this.chatId = uuidv4();
         this.disconnect();
+        this.reconnectAttempts = 0;
+    }
+
+    private setupWebSocket(onChunk: (chunk: string) => void, onError: (err: any) => void, onComplete: () => void) {
+        if (this._ws && (this._ws.readyState === WebSocket.OPEN || this._ws.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+
+        this._ws = new WebSocket(this.wsUrl, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Origin": "null"
+            },
+            rejectUnauthorized: false
+        });
+
+        this._ws.on('open', () => {
+            this.isConnected = true;
+            this.reconnectAttempts = 0;
+        });
+
+        this._ws.on('message', (data: WebSocket.Data) => {
+            const message = data.toString();
+            onChunk(message);
+        });
+
+        this._ws.on('error', (err: any) => {
+            console.error("WebSocket Error:", err);
+            onError(err);
+        });
+
+        this._ws.on('close', (code, reason) => {
+            this.isConnected = false;
+            // Only retry if closed abnormally and not exceeded max attempts
+            if (code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+                const timeout = Math.min(1000 * (2 ** this.reconnectAttempts), 10000); // Exponential backoff max 10s
+                this.reconnectAttempts++;
+                console.log(`Reconnecting in ${timeout}ms (Attempt ${this.reconnectAttempts})...`);
+                setTimeout(() => {
+                    this.setupWebSocket(onChunk, onError, onComplete);
+                    // Re-send payload logic would need to be handled by caller or state
+                }, timeout);
+            } else {
+                onComplete();
+            }
+        });
     }
 
     public async streamResponse(userInput: string, onChunk: (chunk: string) => void, onError: (err: any) => void): Promise<string> {
-        // Close existing connection if any
-        this.disconnect();
+        this.disconnect(); // Ensure fresh start for prompt-response cycle to avoid state mixups
 
         return new Promise((resolve, reject) => {
-            const payload = {
-                chatId: this.chatId,
-                appId: this.appId,
-                systemPrompt: "", // Set to empty to avoid backend validation issues
-                message: userInput
+            let fullResponse = "";
+            let hasResolved = false;
+
+            const safeOnChunk = (chunk: string) => {
+                fullResponse += chunk;
+                onChunk(chunk);
+            };
+
+            const safeOnError = (err: any) => {
+                if (!hasResolved) { onError(err); reject(err); hasResolved = true; }
+            };
+
+            const safeOnComplete = () => {
+                if (!hasResolved) { resolve(fullResponse); hasResolved = true; }
             };
 
             this._ws = new WebSocket(this.wsUrl, {
@@ -41,33 +98,34 @@ export class ByteAIClient {
                 rejectUnauthorized: false
             });
 
-            const ws = this._ws; // Local reference for closure safety
-
-            ws.on('open', () => {
-                ws.send(JSON.stringify(payload));
+            this._ws.on('open', () => {
+                const payload = {
+                    chatId: this.chatId,
+                    appId: this.appId,
+                    systemPrompt: "",
+                    message: userInput
+                };
+                this._ws?.send(JSON.stringify(payload));
             });
 
-            let fullResponse = "";
-
-            ws.on('message', (data: WebSocket.Data) => {
+            this._ws.on('message', (data: WebSocket.Data) => {
                 const message = data.toString();
-                fullResponse += message;
-                onChunk(fullResponse);
+                safeOnChunk(message);
             });
 
-            ws.on('error', (err: any) => {
-                onError(err);
-                reject(err);
+            this._ws.on('error', (err: any) => {
+                safeOnError(err);
             });
 
-            ws.on('close', () => {
-                resolve(fullResponse);
+            this._ws.on('close', () => {
+                safeOnComplete();
             });
         });
     }
 
     public disconnect() {
         if (this._ws) {
+            this._ws.removeAllListeners(); // Prevent dangling listeners
             this._ws.terminate();
             this._ws = undefined;
         }
