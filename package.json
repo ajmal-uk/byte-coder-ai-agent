@@ -30,7 +30,8 @@
         "Snippets"
     ],
     "keywords": [
-        "agentic",
+        "coding assistant",
+        "productivity",
         "autonomous",
         "ai agent",
         "cursor",
@@ -47,7 +48,17 @@
         "javascript",
         "typescript",
         "chatgpt",
-        "free ai"
+        "free ai",
+        "refactoring",
+        "unit testing",
+        "code explanation",
+        "developer tools",
+        "vscode extension",
+        "programming",
+        "software development",
+        "code analysis",
+        "bug fixing",
+        "documentation generation"
     ],
     "main": "./out/extension.js",
     "activationEvents": [],
@@ -57,7 +68,7 @@
                 {
                     "id": "byte-ai-sidebar",
                     "title": "Byte AI",
-                    "icon": "$(hubot)"
+                    "icon": "images/icon.svg"
                 }
             ]
         },
