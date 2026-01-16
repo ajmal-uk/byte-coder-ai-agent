@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
 import { ByteAIClient } from './byteAIClient';
+import { ContextManager } from './ContextManager';
+import { SearchAgent } from './SearchAgent';
 
 export class ChatPanel implements vscode.WebviewViewProvider {
     public static readonly viewType = 'byteAI.chatView';
     private _view?: vscode.WebviewView;
     private _client: ByteAIClient;
+    private _contextManager: ContextManager;
+    private _searchAgent: SearchAgent;
     private _currentSessionId: string;
     private _history: Array<{ role: 'user' | 'assistant', text: string }> = [];
 
@@ -13,6 +17,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         private readonly _context: vscode.ExtensionContext
     ) {
         this._client = new ByteAIClient();
+        this._contextManager = new ContextManager();
+        this._searchAgent = new SearchAgent();
         this._currentSessionId = Date.now().toString();
         this._history = [];
     }
@@ -230,15 +236,10 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                         const fsPath = f.fsPath.toLowerCase();
                         const baseName = relativePath.split('/').pop() || '';
 
-                        // Strategy 1: Exact relative path match
                         if (relativePath === lowerFilename) return true;
-                        // Strategy 2: Path ends with the filename
                         if (relativePath.endsWith(lowerFilename)) return true;
-                        // Strategy 3: fsPath ends with filename
                         if (fsPath.endsWith(lowerFilename)) return true;
-                        // Strategy 4: Base name exact match
                         if (baseName === lowerFilename) return true;
-                        // Strategy 5: Contains the filename
                         if (relativePath.includes(lowerFilename)) return true;
 
                         return false;
@@ -249,15 +250,21 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                             const content = await vscode.workspace.fs.readFile(file);
                             const textContent = new TextDecoder().decode(content);
                             const relativePath = vscode.workspace.asRelativePath(file);
+                            const ext = relativePath.split('.').pop() || 'text';
 
-                            if (textContent.length < 100000) {
-                                // Detect language from extension
-                                const ext = relativePath.split('.').pop() || 'text';
-                                contextBlock += `File: ${relativePath}\n\`\`\`${ext}\n${textContent}\n\`\`\`\n\n`;
-                                filesFound++;
-                            } else {
-                                contextBlock += `File: ${relativePath} (Skipped: Too large)\n\n`;
-                            }
+                            // Use ContextManager for smart extraction
+                            const contextItem = this._contextManager.addFileWithQuery(
+                                relativePath,
+                                textContent,
+                                ext,
+                                message
+                            );
+
+                            const extractedNote = contextItem.extracted
+                                ? ` (smart extracted from ${contextItem.fullSize} chars)`
+                                : '';
+                            contextBlock += `File: ${relativePath}${extractedNote}\n\`\`\`${ext}\n${contextItem.content}\n\`\`\`\n\n`;
+                            filesFound++;
                         } catch (e) {
                             console.error('Error reading context file:', file.fsPath, e);
                             contextBlock += `File: ${filename} (Error reading file)\n\n`;
@@ -271,23 +278,41 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                     contextMsg += contextBlock;
                 }
             } else {
-                // No @ mentions - auto-include current active file as context
+                // No @ mentions - use SearchAgent to find relevant context
                 const editor = vscode.window.activeTextEditor;
-                if (editor) {
+                const activeFilePath = editor ? vscode.workspace.asRelativePath(editor.document.uri) : undefined;
+
+                // Use SearchAgent to find relevant files
+                const searchContext = await this._searchAgent.search(message, activeFilePath);
+
+                if (searchContext) {
+                    contextMsg += searchContext;
+                } else if (editor) {
+                    // Fallback: include active file if no search results
                     const document = editor.document;
                     const fileName = vscode.workspace.asRelativePath(document.uri);
                     const language = document.languageId;
                     const content = document.getText();
 
-                    // Only include if file is not too large
-                    if (content.length < 100000) {
-                        let contextBlock = "\n\n--- CURRENT FILE CONTEXT ---\n";
-                        contextBlock += `**Active File:** ${fileName} (${language})\n`;
-                        contextBlock += `\`\`\`${language}\n${content}\n\`\`\`\n`;
-                        contextMsg += contextBlock;
-                    }
+                    const contextItem = this._contextManager.addFileWithQuery(
+                        fileName,
+                        content,
+                        language,
+                        message
+                    );
+
+                    const extractedNote = contextItem.extracted
+                        ? ` (smart extracted from ${contextItem.fullSize} chars)`
+                        : '';
+                    let contextBlock = "\n\n--- CURRENT FILE CONTEXT ---\n";
+                    contextBlock += `**Active File:** ${fileName} (${language})${extractedNote}\n`;
+                    contextBlock += `\`\`\`${language}\n${contextItem.content}\n\`\`\`\n`;
+                    contextMsg += contextBlock;
                 }
             }
+
+            // Track conversation for context continuity
+            this._contextManager.addConversationTurn('user', message);
 
             // Stream response
             let fullResponse = "";
@@ -299,6 +324,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             });
 
             this._history.push({ role: 'assistant', text: fullResponse });
+            this._contextManager.addConversationTurn('assistant', fullResponse);
             this._view.webview.postMessage({ type: 'addResponse', value: fullResponse, isStream: false });
             await this.saveCurrentSession();
 
