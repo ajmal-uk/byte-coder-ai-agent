@@ -1,13 +1,36 @@
-# Contributing to Byte Coder
+# Contributing to Byte Coder AI Agent
 
 First off, huge thanks for investing your time in contributing to Byte Coder! 🙌
 
-We are committed to building the best AI coding assistant, and your help makes that possible. Whether you're fixing a bug, improving documentation, or proposing a new feature, you're welcome here.
+We are building an **agentic AI coding assistant** with a sophisticated multi-agent architecture. Your contributions help push the boundaries of what's possible in AI-assisted development.
+
+---
+
+## 🧠 Understanding the Architecture
+
+Byte Coder uses a **multi-agent system** for intelligent code context extraction:
+
+```
+src/
+├── agents/                     # 🤖 Sub-Agent System
+│   ├── IntentAnalyzer.ts      # Query understanding & semantic expansion
+│   ├── FileFinderAgent.ts     # Intelligent file discovery
+│   ├── CodeExtractorAgent.ts  # AST-aware code extraction
+│   ├── RelevanceScorerAgent.ts # Multi-factor scoring
+│   └── index.ts               # Barrel export
+├── SearchAgent.ts             # 🎯 Orchestrates sub-agents
+├── ChatViewProvider.ts        # 💬 Chat UI controller
+├── ChatViewHtml.ts            # 🎨 Premium UI components
+├── ContextManager.ts          # 📦 Context management
+├── byteAIClient.ts            # 🌐 AI backend client
+└── extension.ts               # 🚀 VS Code entry point
+```
+
+---
 
 ## 🛠️ How to Contribute
 
 ### 1. Fork & Clone
-Fork the repository to your own GitHub account, then clone it locally:
 
 ```bash
 git clone https://github.com/ajmal-uk/byte-coder-ai-agent.git
@@ -15,14 +38,12 @@ cd byte-coder-ai-agent
 ```
 
 ### 2. Install Dependencies
-Make sure you have `npm` installed.
 
 ```bash
 npm install
 ```
 
 ### 3. Create a Branch
-Always create a new branch for your work:
 
 ```bash
 git checkout -b feature/amazing-new-feature
@@ -31,35 +52,65 @@ git checkout -b fix/annoying-bug
 ```
 
 ### 4. Development & Debugging
-1.  Open the project in **VS Code**.
-2.  Press **F5** to start the extension in a new Extension Development Host window.
-3.  Make changes in the source code; assume the "Extension Development Host" window will need a reload (`Cmd+R` or `Ctrl+R`) to see changes.
 
-### 5. Commit Guidelines
-We appreciate clear commit messages:
+1. Open the project in **VS Code**
+2. Press **F5** to start the Extension Development Host
+3. Make changes; reload the host (`Cmd+R` / `Ctrl+R`) to see updates
+
+### 5. Compile & Test
 
 ```bash
-git commit -m "feat: add support for python refactoring"
-# or
-git commit -m "fix: resolve crash when context is empty"
+npm run compile     # TypeScript compilation
+npm run watch       # Watch mode for development
 ```
 
-### 6. Submit a Pull Request (PR)
-Push to your fork and verify the changes. Then, go to the original repository and submit a Pull Request.
-- Describe your changes clearly.
-- Link to any related issues.
-- Include screenshots/GIFs if you changed the UI.
+### 6. Commit Guidelines
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```bash
+git commit -m "feat(agents): add import graph analysis to CodeExtractor"
+git commit -m "fix(ui): resolve code block copy button not working"
+git commit -m "docs: update README with new features"
+```
+
+### 7. Submit a Pull Request
+
+- Describe your changes clearly
+- Link to related issues
+- Include screenshots/GIFs for UI changes
+
+---
 
 ## 📐 Coding Standards
 
-- **TypeScript**: We use strict TypeScript. Avoid `any` whenever possible.
-- **Linting**: Ensure code is clean. logic should be split into small, functions.
-- **Async/Await**: Prefer async/await over promises.
+| Area | Guideline |
+|------|-----------|
+| **TypeScript** | Strict mode. Avoid `any`. Use proper interfaces. |
+| **Async** | Prefer `async/await` over raw promises |
+| **Agents** | New agents should implement a consistent interface |
+| **UI** | Use VS Code theme variables for colors |
+| **Comments** | Document complex logic, not obvious code |
+
+---
+
+## 🔧 Key Areas for Contribution
+
+- **New Sub-Agents** — Add agents for specific tasks (e.g., GitAgent, TestAgent)
+- **Language Support** — Extend AST patterns in `CodeExtractorAgent.ts`
+- **UI Improvements** — Enhance the chat experience in `ChatViewHtml.ts`
+- **Performance** — Optimize search and caching strategies
+- **Documentation** — Improve README, add tutorials
+
+---
 
 ## 🐛 Found a Bug?
-If you find a bug, please [open an issue](https://github.com/ajmal-uk/byte-coder-ai-agent/issues) with:
-1.  Steps to reproduce.
-2.  Expected vs. actual behavior.
-3.  Screenshots or logs.
 
-Thank you for helping us build the future of coding! 🚀
+[Open an issue](https://github.com/ajmal-uk/byte-coder-ai-agent/issues) with:
+1. Steps to reproduce
+2. Expected vs. actual behavior
+3. Screenshots or logs
+
+---
+
+Thank you for helping us build the future of AI-assisted coding! 🚀
