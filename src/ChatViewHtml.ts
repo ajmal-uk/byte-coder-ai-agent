@@ -34,7 +34,9 @@ export class ChatViewHtml {
                     
                     /* Premium Gradients & Effects */
                     /* Logo Palette: Blue -> Cyan -> Yellow -> Orange */
-                    --gradient-primary: linear-gradient(120deg, #3b82f6 0%, #06b6d4 30%, #eab308 70%, #f97316 100%);
+                    /* Logo Palette: Cyan -> Blue -> Gold -> Orange */
+                    --gradient-primary: linear-gradient(135deg, #00C6FF 0%, #0072FF 40%, #FFD700 70%, #FF7F00 100%);
+                    --accent: #0072FF;
                     --gradient-overlay: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
                     --glass-bg: rgba(30, 30, 30, 0.6);
                     --glass-border: rgba(255, 255, 255, 0.08);
@@ -73,14 +75,12 @@ export class ChatViewHtml {
                 /* Glass Header */
                 header {
                     display: flex; justify-content: space-between; align-items: center;
-                    padding: 0 16px; height: 54px; min-height: 54px;
+                    padding: 0 16px; height: 50px;
                     border-bottom: 1px solid var(--border);
-                    background: rgba(30, 30, 30, 0.7); /* Fallback if var not resolved */
-                    background: var(--bg-app);
+                    background: var(--bg-app); position: sticky; top: 0; z-index: 10;
                     backdrop-filter: blur(16px);
                     -webkit-backdrop-filter: blur(16px);
                     position: relative;
-                    z-index: 10;
                 }
                 
                 header::after {
@@ -437,10 +437,11 @@ export class ChatViewHtml {
                 @keyframes float { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-20px, 20px) scale(1.1); } }
 
                 .empty-greeting {
-                    font-size: 26px; font-weight: 800; 
-                    background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-                    margin-bottom: 12px; letter-spacing: -0.5px;
-                    drop-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+                    font-size: 32px; font-weight: 800; 
+                    background: var(--gradient-primary); 
+                    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                    margin-bottom: 16px; letter-spacing: -0.5px;
+                    filter: drop-shadow(0 4px 10px rgba(0, 114, 255, 0.2));
                 }
                 .empty-subtitle {
                     font-size: 14px; color: var(--text-secondary); margin-bottom: 32px; max-width: 280px; line-height: 1.5;
@@ -451,32 +452,35 @@ export class ChatViewHtml {
                 }
                 .action-card {
                     background: var(--bg-hover); border: 1px solid var(--border);
-                    border-radius: 16px; padding: 16px; cursor: pointer;
-                    display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+                    border-radius: 16px; padding: 20px; cursor: pointer;
+                    display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
                     position: relative; overflow: hidden;
-                }
-                .action-card::before {
-                    content: ''; position: absolute; inset: 0;
-                    background: linear-gradient(135deg, rgba(255,255,255,0.05), transparent);
-                    opacity: 0; transition: opacity 0.2s;
+                    backdrop-filter: blur(10px);
                 }
                 .action-card:hover { 
-                    border-color: var(--accent); background: var(--bg-app);
-                    transform: translateY(-4px); box-shadow: var(--shadow-lg);
+                    transform: translateY(-5px);
+                    box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.2);
+                    border-color: var(--accent);
+                    background: linear-gradient(180deg, var(--bg-hover) 0%, rgba(59, 130, 246, 0.05) 100%);
                 }
-                .action-card:hover::before { opacity: 1; }
                 
                 .action-icon {
-                    width: 36px; height: 36px; border-radius: 10px;
-                    background: rgba(59, 130, 246, 0.1); color: var(--accent);
-                    display: flex; align-items: center; justify-content: center; font-size: 18px;
-                    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    width: 44px; height: 44px; border-radius: 12px;
+                    background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
+                    color: var(--accent);
+                    display: flex; align-items: center; justify-content: center; font-size: 20px;
+                    transition: all 0.3s ease; box-shadow: 0 4px 6px -2px rgba(0,0,0,0.05);
                 }
-                .action-card:hover .action-icon { transform: scale(1.1) rotate(5deg); background: var(--accent); color: white; }
+                .action-card:hover .action-icon { 
+                    transform: scale(1.1); 
+                    background: linear-gradient(135deg, var(--accent), #8b5cf6); 
+                    color: white;
+                    box-shadow: 0 8px 12px -4px rgba(59, 130, 246, 0.4);
+                }
                 
-                .action-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-                .action-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+                .action-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+                .action-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; font-weight: 500; }
 
                 /* Command Popup Styling */
                 .command-popup {
@@ -636,7 +640,6 @@ export class ChatViewHtml {
             <header>
                 <div class="brand">
                     <img src="${logoUri}" class="logo-img" alt="Logo">
-                    Byte AI
                 </div>
                 <div class="header-actions">
                     <button class="btn-icon" onclick="exportChat()" title="Export Chat">${icons.download}</button>
