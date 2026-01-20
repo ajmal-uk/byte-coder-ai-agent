@@ -12,7 +12,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     private _contextManager: ContextManager;
     private _searchAgent: SearchAgent;
     private _currentSessionId: string;
-    private _history: Array<{ role: 'user' | 'assistant', text: string }> = [];
+    private _history: Array<{ role: 'user' | 'assistant', text: string, files?: any[], commands?: any[] }> = [];
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -49,7 +49,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
                 case 'sendMessage':
-                    await this.handleUserMessage(data.value);
+                    await this.handleUserMessage(data.value, data.files, data.commands);
                     break;
                 case 'newChat':
                     this.clearChat();
@@ -87,10 +87,58 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                         vscode.window.showWarningMessage('No active editor to insert code into.');
                     }
                     break;
+                case 'openFile':
+                    const openPath = data.value;
+                    if (openPath) {
+                        try {
+                            let fileUri;
+                            if (openPath.startsWith('/')) {
+                                fileUri = vscode.Uri.file(openPath);
+                            } else {
+                                const root = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri : undefined;
+                                if (root) {
+                                    fileUri = vscode.Uri.joinPath(root, openPath);
+                                } else {
+                                    fileUri = vscode.Uri.file(openPath);
+                                }
+                            }
+                            
+                            // Check if it's a folder
+                            try {
+                                const stat = await vscode.workspace.fs.stat(fileUri);
+                                if (stat.type === vscode.FileType.Directory) {
+                                    // Reveal folder in explorer
+                                    await vscode.commands.executeCommand('revealInExplorer', fileUri);
+                                } else {
+                                    const doc = await vscode.workspace.openTextDocument(fileUri);
+                                    await vscode.window.showTextDocument(doc);
+                                }
+                            } catch (e) {
+                                // Fallback if stat fails (maybe file doesn't exist yet?)
+                                const doc = await vscode.workspace.openTextDocument(fileUri);
+                                await vscode.window.showTextDocument(doc);
+                            }
+                        } catch (e) {
+                            vscode.window.showErrorMessage(`Could not open file: ${openPath}`);
+                        }
+                    }
+                    break;
                 case 'getFiles':
                     const query = data.query ? data.query.toLowerCase() : '';
                     // Search for files (limit to 1000 to keep it fast but broad)
                     const allFiles = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**}', 1000);
+
+                    // Extract unique directories
+                    const dirs = new Set<string>();
+                    allFiles.forEach(f => {
+                        const relativePath = vscode.workspace.asRelativePath(f);
+                        const parts = relativePath.split('/');
+                        // Add all parent directories
+                        for (let i = 0; i < parts.length - 1; i++) {
+                             const dirPath = parts.slice(0, i + 1).join('/');
+                             dirs.add(dirPath);
+                        }
+                    });
 
                     const scoredFiles = allFiles.map(f => {
                         const relativePath = vscode.workspace.asRelativePath(f);
@@ -111,7 +159,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                             // Path contains query
                             else if (lowerPath.includes(query)) score = 50;
                             else {
-                                // Fuzzy match: characters must appear in order
+                                // Fuzzy match
                                 let qIdx = 0;
                                 let pIdx = 0;
                                 let matchCount = 0;
@@ -122,31 +170,67 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                                     }
                                     pIdx++;
                                 }
-                                // Only count if we matched most of the query
                                 if (matchCount === query.length) score = 20;
                             }
                         }
-                        return { file: f, path: relativePath, score };
+                        return { file: f, path: relativePath, score, isFolder: false };
                     });
 
-                    // Sort: Descending score, then shorter paths, then alphabetical
-                    const filteredFiles = scoredFiles
+                    // Score folders
+                    const scoredFolders = Array.from(dirs).map(dir => {
+                        const lowerPath = dir.toLowerCase();
+                        const dirName = dir.split('/').pop() || '';
+                        const lowerName = dirName.toLowerCase();
+                        
+                        let score = 0;
+                        if (!query) {
+                            score = 1;
+                        } else {
+                            if (lowerName === query) score = 95; // High priority for exact folder name
+                            else if (lowerPath === query) score = 90;
+                            else if (lowerName.startsWith(query)) score = 75;
+                            else if (lowerPath.includes(query)) score = 45;
+                            else {
+                                // Fuzzy
+                                let qIdx = 0; let pIdx = 0; let matchCount = 0;
+                                while (qIdx < query.length && pIdx < lowerPath.length) {
+                                    if (lowerPath[pIdx] === query[qIdx]) { matchCount++; qIdx++; }
+                                    pIdx++;
+                                }
+                                if (matchCount === query.length) score = 15;
+                            }
+                        }
+                        // Create a fake URI for the folder
+                        const root = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri : vscode.Uri.file('/');
+                        return { 
+                            file: vscode.Uri.joinPath(root, dir), 
+                            path: dir, 
+                            score, 
+                            isFolder: true 
+                        };
+                    });
+
+                    // Combine and Sort
+                    const combined = [...scoredFiles, ...scoredFolders];
+
+                    const filteredFiles = combined
                         .filter(x => x.score > 0)
                         .sort((a, b) => {
                             if (a.score !== b.score) return b.score - a.score;
                             if (a.path.length !== b.path.length) return a.path.length - b.path.length;
                             return a.path.localeCompare(b.path);
                         })
-                        .slice(0, 50) // Return top 50
+                        .slice(0, 50)
                         .map(x => ({
                             path: x.path,
-                            fullPath: x.file.fsPath
+                            fullPath: x.file.fsPath,
+                            isFolder: x.isFolder
                         }));
 
                     // Add Special Items
                     const specialItems = [
-                        { path: 'problems', fullPath: 'Current Problems & Errors' },
-                        { path: 'clipboard', fullPath: 'Clipboard Content' }
+                        { path: 'problems', fullPath: 'Current Problems & Errors', isFolder: false },
+                        { path: 'clipboard', fullPath: 'Clipboard Content', isFolder: false }
                     ];
 
                     specialItems.forEach(item => {
@@ -256,6 +340,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         // If index is provided, we need to remove everything from that index onwards
         // But we need to find the user message before it to re-run
         let userMsgText = "";
+        let files: any[] = [];
+        let commands: any[] = [];
 
         if (index !== undefined) {
             // Validate index
@@ -263,12 +349,11 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
             const msg = this._history[index];
             if (msg.role === 'assistant') {
-                // We want to regenerate this assistant response.
-                // So we need to remove this message and everything after it.
-                // And user message is at index-1
                 if (index > 0 && this._history[index - 1].role === 'user') {
-                    userMsgText = this._history[index - 1].text;
-                    // Slice up to index-1 (exclusive), so we keep everything BEFORE the user message
+                    const userMsg = this._history[index - 1];
+                    userMsgText = userMsg.text;
+                    files = userMsg.files || [];
+                    commands = userMsg.commands || [];
                     this._history = this._history.slice(0, index - 1);
                 } else {
                     return; // Can't regenerate if no preceding user message
@@ -283,6 +368,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             const lastUserMsg = this._history[this._history.length - 1];
             if (lastUserMsg && lastUserMsg.role === 'user') {
                 userMsgText = lastUserMsg.text;
+                files = lastUserMsg.files || [];
+                commands = lastUserMsg.commands || [];
                 // do not pop user message, just re-run response generation
             }
         }
@@ -291,7 +378,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             // Update view to reflect history change
             this._view?.webview.postMessage({ type: 'loadSession', history: this._history });
             // Trigger generation
-            await this.handleUserMessage(userMsgText, true);
+            await this.handleUserMessage(userMsgText, files, commands, true);
         }
     }
 
@@ -309,11 +396,17 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             this._view?.webview.postMessage({ type: 'loadSession', history: this._history });
 
             // Set input box
-            this._view?.webview.postMessage({ type: 'setAndSendMessage', value: msg.text, justSet: true });
+            this._view?.webview.postMessage({ 
+                type: 'setAndSendMessage', 
+                value: msg.text, 
+                justSet: true,
+                files: msg.files,
+                commands: msg.commands
+            });
         }
     }
 
-    private async handleUserMessage(message: string, shouldUpdateView: boolean = false) {
+    private async handleUserMessage(message: string, files: any[] = [], commands: any[] = [], shouldUpdateView: boolean = false) {
         if (!this._view) return;
 
         try {
@@ -324,15 +417,58 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 message: 'Analyzing your request and recent context'
             });
 
-            this._history.push({ role: 'user', text: message });
+            this._history.push({ role: 'user', text: message, files, commands });
             await this.saveCurrentSession();
 
             if (shouldUpdateView) {
-                this._view.webview.postMessage({ type: 'addMessage', role: 'user', value: message });
+                this._view.webview.postMessage({ type: 'addMessage', role: 'user', value: message, files, commands });
                 this._view.webview.postMessage({ type: 'setGenerating' }); // Show typing indicator
             }
 
             let contextMsg = message;
+
+            // Append commands to contextMsg if they exist
+            if (commands && commands.length > 0) {
+                 contextMsg = `[User Commands: ${commands.map(c => '/' + c).join(' ')}]\n` + contextMsg;
+            }
+
+            // Append attached files content
+            if (files && files.length > 0) {
+                let fileContextBlock = "\n\n--- ATTACHED FILES ---\n";
+                for (const f of files) {
+                    if (f.isFolder) continue; 
+                    
+                    try {
+                        let uri: vscode.Uri;
+                        if (f.fullPath) {
+                            uri = vscode.Uri.file(f.fullPath);
+                        } else if (f.path) {
+                            const root = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri : vscode.Uri.file('/');
+                            uri = vscode.Uri.joinPath(root, f.path);
+                        } else {
+                            continue;
+                        }
+
+                        const content = await vscode.workspace.fs.readFile(uri);
+                        const textContent = new TextDecoder().decode(content);
+                        const relativePath = vscode.workspace.asRelativePath(uri);
+                        const ext = relativePath.split('.').pop() || 'text';
+
+                        const contextItem = this._contextManager.addFileWithQuery(
+                            relativePath,
+                            textContent,
+                            ext,
+                            message
+                        );
+                        
+                        fileContextBlock += `File: ${relativePath}\n\`\`\`${ext}\n${contextItem.content}\n\`\`\`\n\n`;
+                    } catch (e) {
+                        console.error('Error reading attached file:', f, e);
+                    }
+                }
+                contextMsg += fileContextBlock;
+            }
+
             const conversationSummary = this._contextManager.getConversationSummary();
             if (conversationSummary) {
                 contextMsg = conversationSummary + '\n\n' + contextMsg;

@@ -388,9 +388,9 @@ export class ChatViewHtml {
                     border: 1px solid rgba(0, 198, 255, 0.3);
                 }
                 .input-highlight .command {
-                    color: transparent; background: rgba(255, 127, 0, 0.15);
+                    color: transparent; background: rgba(168, 85, 247, 0.15);
                     border-radius: 6px; padding: 0 6px;
-                    border: 1px solid rgba(255, 127, 0, 0.3);
+                    border: 1px solid rgba(168, 85, 247, 0.3);
                 }
                 
                 /* Scroll to Bottom Button */
@@ -417,6 +417,18 @@ export class ChatViewHtml {
                 
                 .input-actions { display: flex; justify-content: flex-end; align-items: center; }
                 
+                .btn-icon {
+                    background: transparent; color: var(--text-secondary); border: none;
+                    border-radius: 12px; width: 40px; height: 40px;
+                    cursor: pointer; display: flex; align-items: center; justify-content: center;
+                    transition: all 0.2s;
+                }
+                .btn-icon:hover {
+                    background: rgba(127, 127, 127, 0.1);
+                    color: var(--text-primary);
+                }
+                .btn-icon:active { transform: scale(0.95); }
+
                 .btn-send {
                     background: var(--accent); color: white; border: none;
                     border-radius: 12px; width: 40px; height: 40px;
@@ -752,6 +764,81 @@ export class ChatViewHtml {
                 }
                 .toast-close:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 
+                /* Input Tags (Chips) */
+                .input-tags {
+                    display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px;
+                    margin-bottom: 8px; /* Space before input */
+                    min-height: 0;
+                    transition: all 0.2s ease;
+                }
+                .input-tags:not(:empty) {
+                    margin-top: 4px;
+                }
+                .file-tag {
+                    display: inline-flex; align-items: center; gap: 6px;
+                    background: rgba(56, 189, 248, 0.15); 
+                    border: 1px solid rgba(56, 189, 248, 0.3);
+                    color: #38bdf8; 
+                    padding: 4px 8px; 
+                    border-radius: 6px;
+                    font-size: 12px; 
+                    cursor: pointer; 
+                    user-select: none;
+                    transition: all 0.2s;
+                    max-width: 100%;
+                }
+                .file-tag:hover { 
+                    background: rgba(56, 189, 248, 0.25); 
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.2);
+                }
+                .file-tag .tag-icon { opacity: 1; }
+                .file-tag .tag-text { 
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;
+                    font-weight: 500;
+                }
+                .file-tag .close { 
+                    margin-left: 2px; opacity: 0.7; padding: 2px; border-radius: 4px; display: flex;
+                }
+                .file-tag .close:hover { 
+                    opacity: 1; background: rgba(56, 189, 248, 0.3); color: white;
+                }
+                
+                .command-tag {
+                    background: rgba(216, 180, 254, 0.15) !important;
+                    border-color: rgba(216, 180, 254, 0.3) !important;
+                    color: #d8b4fe !important;
+                }
+                .command-tag:hover {
+                    background: rgba(216, 180, 254, 0.25) !important;
+                    box-shadow: 0 2px 8px rgba(216, 180, 254, 0.2);
+                }
+                .command-tag .close:hover {
+                    background: rgba(216, 180, 254, 0.3) !important;
+                }
+
+                
+                /* Clickable Tags in History */
+                .message .file-tag {
+                    display: inline-flex; align-items: center; gap: 4px;
+                    background: rgba(56, 189, 248, 0.15); 
+                    border: 1px solid rgba(56, 189, 248, 0.3);
+                    color: #38bdf8; 
+                    padding: 2px 6px; 
+                    border-radius: 4px;
+                    font-size: 12px; 
+                    font-family: var(--font-mono);
+                    cursor: pointer;
+                    margin: 0 2px;
+                    vertical-align: middle;
+                    font-weight: 500;
+                }
+                .message .file-tag:hover {
+                    background: rgba(56, 189, 248, 0.25);
+                    text-decoration: underline;
+                    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.2);
+                }
+
             </style>
         </head>
         <body>
@@ -899,14 +986,28 @@ export class ChatViewHtml {
                 <div class="file-popup" id="filePopup"></div>
                 <div class="input-box">
                     <div class="input-wrapper">
+                        <div class="input-tags" id="inputTags"></div>
                         <div class="input-highlight" id="inputHighlight"></div>
                         <textarea id="messageInput" placeholder="Ask anything, @ to mention, / for command..." rows="1"></textarea>
                     </div>
-                    <div class="input-actions">
-                        <button class="btn-send" id="sendBtn" title="Send">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
-                        </button>
-                        <button class="btn-stop" id="stopBtn" title="Stop Generation">${icons.stop}</button>
+                    <div class="input-actions" style="justify-content: space-between;">
+                         <div class="left-actions" style="display: flex; gap: 8px;">
+                             <button class="btn-icon" id="attachBtn" title="Add File/Folder">
+                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                             </button>
+                             <button class="btn-icon" id="commandBtn" title="Commands">
+                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                     <polyline points="4 17 10 11 4 5"></polyline>
+                                     <line x1="12" y1="19" x2="20" y2="19"></line>
+                                 </svg>
+                             </button>
+                         </div>
+                         <div class="right-actions" style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn-send" id="sendBtn" title="Send">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                            </button>
+                            <button class="btn-stop" id="stopBtn" title="Stop Generation">${icons.stop}</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -928,6 +1029,7 @@ export class ChatViewHtml {
                 const chatContainer = document.getElementById('chat-container');
                 const messageInput = document.getElementById('messageInput');
                 const inputHighlight = document.getElementById('inputHighlight');
+                const inputTags = document.getElementById('inputTags');
                 const sendBtn = document.getElementById('sendBtn');
                 const stopBtn = document.getElementById('stopBtn');
                 const sessionDrawer = document.getElementById('session-drawer');
@@ -935,6 +1037,63 @@ export class ChatViewHtml {
                 const commandPopup = document.getElementById('commandPopup');
                 const filePopup = document.getElementById('filePopup');
                 const emptyState = document.getElementById('emptyState');
+                
+                // State
+                let selectedFiles = [];
+                let selectedCommands = [];
+
+                // Helper: Open File
+                window.openFile = (path) => {
+                    vscode.postMessage({ type: 'openFile', value: path });
+                };
+
+                // Helper: Update Input Tags
+                function updateInputTags() {
+                    inputTags.innerHTML = '';
+                    
+                    // Render Commands
+                    selectedCommands.forEach((cmd, index) => {
+                        const tag = document.createElement('div');
+                        tag.className = 'file-tag command-tag';
+                        tag.title = '/' + cmd;
+                        tag.innerHTML = \`
+                            <span class="tag-icon">⚡</span>
+                            <span class="tag-text">/\${cmd}</span>
+                            <span class="close" onclick="event.stopPropagation(); removeCommand(\${index})">×</span>
+                        \`;
+                        inputTags.appendChild(tag);
+                    });
+
+                    selectedFiles.forEach((file, index) => {
+                        const tag = document.createElement('div');
+                        tag.className = 'file-tag';
+                        tag.title = file.path;
+                        const iconChar = file.isFolder ? '📁' : '📄';
+                        tag.innerHTML = \`
+                            <span class="tag-icon">\${iconChar}</span>
+                            <span class="tag-text">\${file.name}</span>
+                            <span class="close" onclick="event.stopPropagation(); removeFile(\${index})">×</span>
+                        \`;
+                        // Allow clicking the tag in input to open it too (user requirement)
+                        tag.onclick = () => window.openFile(file.fullPath || file.path);
+                        inputTags.appendChild(tag);
+                    });
+                    
+                    // Adjust input height if needed
+                    messageInput.dispatchEvent(new Event('input'));
+                }
+
+                window.removeFile = (index) => {
+                    selectedFiles.splice(index, 1);
+                    updateInputTags();
+                    messageInput.focus();
+                };
+
+                window.removeCommand = (index) => {
+                    selectedCommands.splice(index, 1);
+                    updateInputTags();
+                    messageInput.focus();
+                };
                 
                 // Popup navigation state
                 let commandPopupSelectedIndex = -1;
@@ -1134,17 +1293,29 @@ export class ChatViewHtml {
                 // Send Message
                 function sendMessage() {
                     const text = messageInput.value.trim();
-                    if (!text || isGenerating) return;
+                    if ((!text && selectedFiles.length === 0 && selectedCommands.length === 0) || isGenerating) return;
                     
                     currentAssistantMessageDiv = null;
                     currentAssistantMessageIndex = null;
                     
-                    addMessage('user', text);
+                    addMessage('user', text, [...selectedFiles], [...selectedCommands]);
+                    
+                    vscode.postMessage({ type: 'sendMessage', value: text, files: [...selectedFiles], commands: [...selectedCommands] });
+                    
+                    // Reset input and state
                     messageInput.value = '';
                     messageInput.style.height = '24px';
+                    selectedFiles = [];
+                    selectedCommands = [];
+                    updateInputTags();
+                    
                     updateHighlight();
                     commandPopup.classList.remove('show');
                     filePopup.classList.remove('show');
+                    
+                    // Reset Buttons
+                    attachBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+                    commandBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>';
                     
                     document.body.classList.remove('new-chat');
                     
@@ -1154,7 +1325,6 @@ export class ChatViewHtml {
                     // Show inline thinking indicator instead of simple dots
                     showThinkingIndicator();
                     
-                    vscode.postMessage({ type: 'sendMessage', value: text });
                     persistState();
                 }
                 
@@ -1174,6 +1344,52 @@ export class ChatViewHtml {
                     isGenerating = false;
                     updateUIState();
                     persistState();
+                });
+
+                // Button Event Listeners
+                
+                function toggleFilePopup() {
+                    if (filePopup.classList.contains('show')) {
+                        filePopup.classList.remove('show');
+                        attachBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+                        messageInput.focus();
+                    } else {
+                        commandPopup.classList.remove('show');
+                        commandBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>';
+                        
+                        filePopup.classList.add('show');
+                        attachBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+                        debouncedFileSearch(''); // Load all files
+                        filePopupSelectedIndex = 0;
+                        messageInput.focus();
+                    }
+                }
+
+                function toggleCommandPopup() {
+                    if (commandPopup.classList.contains('show')) {
+                        commandPopup.classList.remove('show');
+                        commandBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>';
+                        messageInput.focus();
+                    } else {
+                        filePopup.classList.remove('show');
+                        attachBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+                        
+                        commandPopup.classList.add('show');
+                        commandBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+                        commandPopupSelectedIndex = 0;
+                        updateCommandPopupSelection();
+                        messageInput.focus();
+                    }
+                }
+
+                attachBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleFilePopup();
+                });
+
+                commandBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleCommandPopup();
                 });
 
                 // Global shortcuts
@@ -1336,6 +1552,14 @@ export class ChatViewHtml {
                             
                         case 'setAndSendMessage':
                             messageInput.value = message.value;
+                            
+                            // Restore tags if provided
+                            if (message.files || message.commands) {
+                                selectedFiles = message.files || [];
+                                selectedCommands = message.commands || [];
+                                updateInputTags();
+                            }
+                            
                             updateHighlight();
                             if (!message.justSet) {
                                 sendMessage();
@@ -1361,13 +1585,13 @@ export class ChatViewHtml {
                              } else {
                                  document.body.classList.remove('new-chat');
                                  message.history.forEach(msg => {
-                                     addMessage(msg.role, msg.text);
+                                     addMessage(msg.role, msg.text, msg.files, msg.commands);
                                  });
                              }
                              break;
 
                         case 'addMessage':
-                           addMessage(message.role, message.value);
+                           addMessage(message.role, message.value, message.files, message.commands);
                            break;
 
                         case 'setGenerating':
@@ -1406,16 +1630,55 @@ export class ChatViewHtml {
                 let messageIndex = 0;
                 let messageHistory = [];
                 
-                function addMessage(role, text) {
+                function addMessage(role, text, files = [], commands = []) {
                     const currentIdx = messageIndex++;
-                    messageHistory.push({ role, text });
+                    messageHistory.push({ role, text, files, commands });
                     const div = document.createElement('div');
                     div.className = 'message ' + role;
                     div.dataset.index = currentIdx;
 
                     const contentDiv = document.createElement('div');
                     contentDiv.className = 'content';
-                    contentDiv.innerHTML = marked.parse(text);
+                    
+                    // Render Files/Tags if any
+                    if ((files && files.length > 0) || (commands && commands.length > 0)) {
+                        const tagsContainer = document.createElement('div');
+                        tagsContainer.className = 'input-tags';
+                        tagsContainer.style.marginBottom = '8px';
+                        
+                        if (commands) {
+                            commands.forEach(cmd => {
+                                const tag = document.createElement('div');
+                                tag.className = 'file-tag command-tag';
+                                tag.innerHTML = \`
+                                    <span>⚡</span>
+                                    <span>/\${cmd}</span>
+                                \`;
+                                tagsContainer.appendChild(tag);
+                            });
+                        }
+
+                        if (files) {
+                            files.forEach(file => {
+                                const tag = document.createElement('div');
+                                tag.className = 'file-tag'; 
+                                
+                                const iconChar = file.isFolder ? '📁' : '📄';
+                                
+                                tag.innerHTML = \`
+                                    <span>\${iconChar}</span>
+                                    <span>\${file.name}</span>
+                                \`;
+                                tag.onclick = () => window.openFile(file.fullPath || file.path);
+                                tagsContainer.appendChild(tag);
+                            });
+                        }
+                        contentDiv.appendChild(tagsContainer);
+                    }
+
+                    const textDiv = document.createElement('div');
+                    textDiv.innerHTML = marked.parse(text);
+                    contentDiv.appendChild(textDiv);
 
                     div.appendChild(contentDiv);
 
@@ -1502,7 +1765,7 @@ export class ChatViewHtml {
                     resetMessageIndex();
                     document.body.classList.remove('new-chat');
                     initialState.messages.forEach(msg => {
-                        addMessage(msg.role, msg.text);
+                        addMessage(msg.role, msg.text, msg.files, msg.commands);
                     });
                 } else {
                     document.body.classList.add('new-chat');
@@ -1576,7 +1839,21 @@ export class ChatViewHtml {
                 }
                 
                 function selectCommand(cmd) {
-                    messageInput.value = '/' + cmd + ' ';
+                    // Check if already selected
+                    if (!selectedCommands.includes(cmd)) {
+                        selectedCommands.push(cmd);
+                        updateInputTags();
+                    }
+                    
+                    // Remove the command text from input
+                    const val = messageInput.value;
+                    const lastSlash = val.lastIndexOf('/');
+                    if (lastSlash !== -1) {
+                         messageInput.value = val.substring(0, lastSlash);
+                    } else {
+                        messageInput.value = '';
+                    }
+
                     updateHighlight();
                     messageInput.focus();
                     commandPopup.classList.remove('show');
@@ -1606,20 +1883,24 @@ export class ChatViewHtml {
                         };
 
                         // Determine Icon
-                        const ext = file.path.split('.').pop().toLowerCase();
                         let iconChar = '📄';
                         let iconClass = 'file-icon';
                         
-                        // Simple icon mapping
-                        switch(ext) {
-                            case 'ts': case 'tsx': iconChar = '{}'; iconClass += ' icon-ts'; break;
-                            case 'js': case 'jsx': iconChar = '{}'; iconClass += ' icon-js'; break;
-                            case 'json': iconChar = '{}'; iconClass += ' icon-json'; break;
-                            case 'md': iconChar = 'M↓'; iconClass += ' icon-md'; break;
-                            case 'css': case 'scss': iconChar = '#'; iconClass += ' icon-css'; break;
-                            case 'html': iconChar = '<>'; iconClass += ' icon-html'; break;
-                            case 'py': iconChar = 'py'; iconClass += ' icon-py'; break;
-                            case 'png': case 'svg': case 'jpg': iconChar = '🖼️'; break;
+                        if (file.isFolder) {
+                             iconChar = '📁';
+                             iconClass += ' icon-folder';
+                        } else {
+                            const ext = file.path.split('.').pop().toLowerCase();
+                            switch(ext) {
+                                case 'ts': case 'tsx': iconChar = '{}'; iconClass += ' icon-ts'; break;
+                                case 'js': case 'jsx': iconChar = '{}'; iconClass += ' icon-js'; break;
+                                case 'json': iconChar = '{}'; iconClass += ' icon-json'; break;
+                                case 'md': iconChar = 'M↓'; iconClass += ' icon-md'; break;
+                                case 'css': case 'scss': iconChar = '#'; iconClass += ' icon-css'; break;
+                                case 'html': iconChar = '<>'; iconClass += ' icon-html'; break;
+                                case 'py': iconChar = 'py'; iconClass += ' icon-py'; break;
+                                case 'png': case 'svg': case 'jpg': iconChar = '🖼️'; break;
+                            }
                         }
 
                         // Split path for display
@@ -1635,7 +1916,7 @@ export class ChatViewHtml {
                             </div>
                         \`;
                         div.onclick = () => {
-                            // Use cursor-aware replacement
+                            // Tag Logic Replacement
                             const val = messageInput.value;
                             const cursorPos = messageInput.selectionStart;
                             const textBeforeCursor = val.substring(0, cursorPos);
@@ -1644,21 +1925,26 @@ export class ChatViewHtml {
                             // Find where the @ mention starts
                             const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
                             const beforeAt = lastSpaceIndex === -1 ? '' : textBeforeCursor.substring(0, lastSpaceIndex + 1);
+
+                            // Add to selected files
+                            const fileObj = { path: file.path, fullPath: file.fullPath, name: fileName, isFolder: file.isFolder };
                             
-                            // Insert formatted file tag: @[path] for cleaner parsing if you want, 
-                            // or just @path. User mentioned "@[images/logo.png]" earlier.
-                            // Let's stick to simple path for now, or match user preference.
-                            // Actually, let's just insert the path, standard logic.
-                            messageInput.value = beforeAt + '@' + file.path + ' ' + textAfterCursor.trim();
+                            // Check duplicates
+                            if (!selectedFiles.some(f => f.path === file.path)) {
+                                selectedFiles.push(fileObj);
+                                updateInputTags();
+                            }
+                            
+                            // Remove the @partial text from input
+                            messageInput.value = beforeAt + textAfterCursor.trim();
                             
                             filePopup.classList.remove('show');
                             messageInput.focus();
                             
                             // Set cursor position
-                            const newPos = beforeAt.length + file.path.length + 2;
+                            const newPos = beforeAt.length;
                             messageInput.setSelectionRange(newPos, newPos);
                             
-                            // Update highlighting immediately
                             updateHighlight();
                         };
                         filePopup.appendChild(div);
@@ -1668,14 +1954,14 @@ export class ChatViewHtml {
                 
                 // Override addMessage to hide empty state and reset streaming state for new user messages
                 const originalAddMessage = addMessage;
-                addMessage = function(role, text) {
+                addMessage = function(role, text, files = [], commands = []) {
                     if (role === 'user') {
                         currentAssistantMessageDiv = null;
                         currentAssistantMessageIndex = null;
                     }
                     const es = document.getElementById('emptyState');
                     if (es) es.remove();
-                    return originalAddMessage(role, text);
+                    return originalAddMessage(role, text, files, commands);
                 };
 
                 function newChat() {
