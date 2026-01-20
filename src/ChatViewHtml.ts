@@ -136,13 +136,12 @@ export class ChatViewHtml {
                     justify-content: flex-start; /* content starts from right */
                 }
                 .message.user .content {
-                    background: var(--accent); color: var(--accent-foreground);
+                    background: var(--bg-hover); color: var(--text-primary);
                     padding: 12px 18px; border-radius: 18px;
                     border-bottom-right-radius: 4px;
                     max-width: 85%;
-                    box-shadow: var(--shadow-md);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    background-image: var(--gradient-overlay);
+                    box-shadow: var(--shadow-sm);
+                    border: 1px solid var(--border);
                 }
 
                 /* Assistant Message - Column (Text top, Actions bottom) */
@@ -172,13 +171,14 @@ export class ChatViewHtml {
                  .message:hover .msg-actions { opacity: 1; }
 
                 .btn-icon.action-btn {
-                    width: 28px; height: 28px; background: var(--bg-app); 
-                    border: 1px solid var(--border); color: var(--text-secondary);
-                    box-shadow: var(--shadow-sm);
+                    width: 28px; height: 28px; background: transparent; 
+                    border: none; color: var(--text-secondary);
+                    box-shadow: none; /* Removed shadow/border for cleaner look */
                 }
                 .btn-icon.action-btn:hover {
-                    background: var(--bg-hover); color: var(--text-primary);
+                    color: var(--text-primary);
                     transform: scale(1.1);
+                    /* Removed background change */
                 }
 
                 .message.assistant .content {
@@ -189,7 +189,16 @@ export class ChatViewHtml {
                     color: var(--text-primary);
                 }
 
-                /* Inline Thinking Indicator - Minimal Design */
+                /* ... existing styles ... */
+
+                .btn-send {
+                    background: var(--accent); color: white; border: none;
+                    border-radius: 50% !important; /* Forced round */
+                    width: 40px; height: 40px;
+                    cursor: pointer; display: flex; align-items: center; justify-content: center;
+                    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+                }
                 .thinking-indicator {
                     display: flex;
                     align-items: center;
