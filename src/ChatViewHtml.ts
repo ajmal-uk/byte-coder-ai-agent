@@ -51,8 +51,38 @@ export class ChatViewHtml {
                     --code-bg: var(--vscode-editor-background);
                     --code-header-bg: var(--vscode-editorGroupHeader-tabsBackground);
                     
+                    /* Header Shadow */
+                    --header-shadow: 0 4px 20px -5px rgba(0,0,0,0.3);
+                    
+                    /* Tag Colors */
+                    --tag-file-bg: rgba(56, 189, 248, 0.15);
+                    --tag-file-border: rgba(56, 189, 248, 0.3);
+                    --tag-file-text: #38bdf8;
+                    
+                    --tag-cmd-bg: rgba(216, 180, 254, 0.15);
+                    --tag-cmd-border: rgba(216, 180, 254, 0.3);
+                    --tag-cmd-text: #d8b4fe;
+                    
                     /* Font Fallbacks */
                     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+                }
+
+                body.vscode-light {
+                    --glass-bg: rgba(255, 255, 255, 0.85);
+                    --glass-border: rgba(0, 0, 0, 0.1);
+                    --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
+                    --shadow-md: 0 6px 16px rgba(0,0,0,0.1);
+                    --shadow-lg: 0 12px 32px rgba(0,0,0,0.15);
+                    --header-shadow: 0 4px 20px -5px rgba(0,0,0,0.1);
+                    
+                    /* Tag Colors Light */
+                    --tag-file-bg: rgba(2, 132, 199, 0.1);
+                    --tag-file-border: rgba(2, 132, 199, 0.2);
+                    --tag-file-text: #0284c7;
+                    
+                    --tag-cmd-bg: rgba(147, 51, 234, 0.1);
+                    --tag-cmd-border: rgba(147, 51, 234, 0.2);
+                    --tag-cmd-text: #9333ea;
                 }
 
                 body {
@@ -76,9 +106,9 @@ export class ChatViewHtml {
                     display: flex; justify-content: space-between; align-items: center;
                     padding: 0 16px; height: 52px;
                     border-bottom: 1px solid var(--glass-border);
-                    background: rgba(30, 30, 30, 0.6); position: sticky; top: 0; z-index: 100;
+                    background: var(--glass-bg); position: sticky; top: 0; z-index: 100;
                     backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-                    box-shadow: 0 4px 20px -5px rgba(0,0,0,0.3);
+                    box-shadow: var(--header-shadow);
                 }
                 
 
@@ -140,8 +170,6 @@ export class ChatViewHtml {
                     padding: 12px 18px; border-radius: 18px;
                     border-bottom-right-radius: 4px;
                     max-width: 85%;
-                    box-shadow: var(--shadow-sm);
-                    border: 1px solid var(--border);
                 }
 
                 /* Assistant Message - Column (Text top, Actions bottom) */
@@ -413,6 +441,8 @@ export class ChatViewHtml {
                     width: 100%; border: none; background: transparent; color: var(--input-fg);
                     font-family: inherit; font-size: 14px; resize: none; outline: none;
                     max-height: 200px; min-height: 24px; padding: 4px 0; line-height: 1.4;
+                    box-sizing: border-box;
+                    height: 24px;
                 }
                 
                 .input-actions { display: flex; justify-content: flex-end; align-items: center; }
@@ -442,6 +472,13 @@ export class ChatViewHtml {
                     box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3); 
                 }
                 .btn-send:active { transform: scale(0.95); }
+                .btn-send.disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                    background: var(--text-secondary);
+                    box-shadow: none;
+                    pointer-events: none;
+                }
                 .btn-send span { display: none; }
 
                 .btn-stop {
@@ -776,9 +813,9 @@ export class ChatViewHtml {
                 }
                 .file-tag {
                     display: inline-flex; align-items: center; gap: 6px;
-                    background: rgba(56, 189, 248, 0.15); 
-                    border: 1px solid rgba(56, 189, 248, 0.3);
-                    color: #38bdf8; 
+                    background: var(--tag-file-bg); 
+                    border: 1px solid var(--tag-file-border);
+                    color: var(--tag-file-text); 
                     padding: 4px 8px; 
                     border-radius: 6px;
                     font-size: 12px; 
@@ -805,25 +842,26 @@ export class ChatViewHtml {
                 }
                 
                 .command-tag {
-                    background: rgba(216, 180, 254, 0.15) !important;
-                    border-color: rgba(216, 180, 254, 0.3) !important;
-                    color: #d8b4fe !important;
+                    background: var(--tag-cmd-bg) !important;
+                    border-color: var(--tag-cmd-border) !important;
+                    color: var(--tag-cmd-text) !important;
                 }
                 .command-tag:hover {
-                    background: rgba(216, 180, 254, 0.25) !important;
+                    background: var(--tag-cmd-bg) !important;
+                    filter: brightness(1.1);
                     box-shadow: 0 2px 8px rgba(216, 180, 254, 0.2);
                 }
                 .command-tag .close:hover {
-                    background: rgba(216, 180, 254, 0.3) !important;
+                    background: var(--tag-cmd-border) !important;
                 }
 
                 
                 /* Clickable Tags in History */
                 .message .file-tag {
                     display: inline-flex; align-items: center; gap: 4px;
-                    background: rgba(56, 189, 248, 0.15); 
-                    border: 1px solid rgba(56, 189, 248, 0.3);
-                    color: #38bdf8; 
+                    background: var(--tag-file-bg); 
+                    border: 1px solid var(--tag-file-border);
+                    color: var(--tag-file-text); 
                     padding: 2px 6px; 
                     border-radius: 4px;
                     font-size: 12px; 
@@ -845,7 +883,7 @@ export class ChatViewHtml {
             <header>
                 <div class="brand">
                     <img src="${logoUri}" class="logo-img" alt="Logo">
-                    <span style="font-size: 10px; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; border: 1px solid var(--accent); padding: 1px 4px; border-radius: 4px; margin-left: -2px; font-weight: 800; opacity: 0.9; letter-spacing: 0.5px;">PRO</span>
+                    <span style="font-size: 10px; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; border: 1px solid var(--accent); padding: 1px 4px; border-radius: 4px; margin-left: -2px; font-weight: 800; opacity: 0.9; letter-spacing: 0.5px;">BYTE</span>
                 </div>
                 <div class="header-actions">
                     <button class="btn-icon" onclick="exportChat()" title="Export Chat">${icons.download}</button>
@@ -1047,6 +1085,16 @@ export class ChatViewHtml {
                     vscode.postMessage({ type: 'openFile', value: path });
                 };
 
+                // Helper: Update Send Button State
+                function updateSendButtonState() {
+                    const text = messageInput.value.trim();
+                    if (!text && selectedFiles.length === 0 && selectedCommands.length === 0) {
+                        sendBtn.classList.add('disabled');
+                    } else {
+                        sendBtn.classList.remove('disabled');
+                    }
+                }
+
                 // Helper: Update Input Tags
                 function updateInputTags() {
                     inputTags.innerHTML = '';
@@ -1245,9 +1293,12 @@ export class ChatViewHtml {
 
                 // Auto-resize & Input Handler
                 messageInput.addEventListener('input', function() {
-                    this.style.height = 'auto';
-                    this.style.height = (this.scrollHeight) + 'px';
-                    if (this.value === '') this.style.height = '24px';
+                    this.style.height = '24px';
+                    if (this.scrollHeight > 24) {
+                        this.style.height = (this.scrollHeight) + 'px';
+                    }
+                    
+                    updateSendButtonState();
                     
                     // Update syntax highlighting
                     updateHighlight();
@@ -1651,8 +1702,8 @@ export class ChatViewHtml {
                                 const tag = document.createElement('div');
                                 tag.className = 'file-tag command-tag';
                                 tag.innerHTML = \`
-                                    <span>⚡</span>
-                                    <span>/\${cmd}</span>
+                                    <span class="tag-icon">⚡</span>
+                                    <span class="tag-text">/\${cmd}</span>
                                 \`;
                                 tagsContainer.appendChild(tag);
                             });
@@ -1666,8 +1717,8 @@ export class ChatViewHtml {
                                 const iconChar = file.isFolder ? '📁' : '📄';
                                 
                                 tag.innerHTML = \`
-                                    <span>\${iconChar}</span>
-                                    <span>\${file.name}</span>
+                                    <span class="tag-icon">\${iconChar}</span>
+                                    <span class="tag-text">\${file.name}</span>
                                 \`;
                                 tag.onclick = () => window.openFile(file.fullPath || file.path);
                                 tagsContainer.appendChild(tag);
