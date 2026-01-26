@@ -33,6 +33,7 @@ import { DocWriterAgent } from '../agents/DocWriterAgent';
 import { TodoManagerAgent, TodoManagerInput } from '../agents/TodoManagerAgent';
 import { ArchitectAgent } from '../agents/ArchitectAgent';
 import { QualityAssuranceAgent } from '../agents/QualityAssuranceAgent';
+import { WebSearchAgent } from '../agents/WebSearchAgent';
 
 export interface PipelineContext {
     query: string;
@@ -66,6 +67,7 @@ export class PipelineEngine {
     private todoManager: TodoManagerAgent;
     private architect: ArchitectAgent;
     private qualityAssurance: QualityAssuranceAgent;
+    private webSearch: WebSearchAgent;
 
     // Agent registry for dynamic dispatch
     private agents: Map<string, any> = new Map();
@@ -90,6 +92,7 @@ export class PipelineEngine {
         this.todoManager = new TodoManagerAgent();
         this.architect = new ArchitectAgent();
         this.qualityAssurance = new QualityAssuranceAgent();
+        this.webSearch = new WebSearchAgent();
 
         // Register agents
         this.agents.set('IntentAnalyzer', this.intentAnalyzer);
@@ -98,6 +101,7 @@ export class PipelineEngine {
         this.agents.set('ContextAnalyzer', this.contextAnalyzer);
         this.agents.set('ContextSearch', this.contextSearch);
         this.agents.set('FilePartSearcher', this.filePartSearcher);
+        this.agents.set('WebSearch', this.webSearch);
         this.agents.set('ProcessPlanner', this.processPlanner);
         this.agents.set('CodePlanner', this.codePlanner);
         this.agents.set('TaskPlanner', this.taskPlanner);
@@ -110,6 +114,7 @@ export class PipelineEngine {
         this.agents.set('TodoManager', this.todoManager);
         this.agents.set('Architect', this.architect);
         this.agents.set('QualityAssurance', this.qualityAssurance);
+        this.agents.set('ContentRetriever', { name: 'ContentRetriever' });
     }
 
     /**
@@ -218,15 +223,17 @@ export class PipelineEngine {
                          // The `PipelineStep` has `args`.
                          
                          // 1. CodeGenerator (to generate fix modifications)
+                         const existingCodePlan = context.results.get('CodePlanner')?.payload;
                          const codeGenStep: PipelineStep = {
                              step: 900 + retryCount * 3,
                              agent: 'CodeGenerator',
                              parallel: false,
                              args: { 
                                  taskPlan: { taskGraph: [fixTask], executionOrder: [fixTask.id] },
-                                 // We need to pass the context/issues somehow. 
-                                 // CodeGenerator uses `taskPlan` or `context`.
-                                 // We can pass the issues in the task description.
+                                 codePlan: existingCodePlan || { fileStructure: [], interfaces: [] }, // Fallback
+                                 context: {
+                                     knowledge: [{ summary: `Fix QA Issues: ${qaIssues}`, relevance: 1 }]
+                                 }
                              }
                          };
 
@@ -552,7 +559,37 @@ export class PipelineEngine {
                     case 'ContextPlanner':
                         result = this.contextPlanner.analyze(context.query, context.activeFilePath);
                         break;
+                    case 'WebSearch':
+                        const wsOutput = await this.webSearch.execute({
+                            query: step.args?.query || context.query
+                        });
+                        result = wsOutput.status === 'success' ? wsOutput.payload : null;
+                        if (wsOutput.status === 'failed') throw new Error(wsOutput.error?.message || 'Web search failed');
+                        break;
                     case 'ContextAnalyzer': {
+                         // Handle Web Search summarization
+                         if (step.args?.contextType === 'web_search_results') {
+                             const webResult = context.results.get('WebSearch')?.payload;
+                             if (webResult && webResult.content) {
+                                 result = {
+                                     summary: `### 🌐 Web Search Results\n**Source:** ${webResult.source}\n**Command:** \`${webResult.commandUsed}\`\n\n${webResult.content}`,
+                                     chunks: [],
+                                     totalFiles: 0,
+                                     totalChunks: 1,
+                                     tokensEstimate: Math.ceil(webResult.content.length / 4)
+                                 };
+                             } else {
+                                 result = { 
+                                     summary: "No web search results available or content is empty.", 
+                                     chunks: [],
+                                     totalFiles: 0,
+                                     totalChunks: 0,
+                                     tokensEstimate: 0
+                                 };
+                             }
+                             break;
+                         }
+
                         // Requires files to be found first (dependency)
                         const filesFound = context.results.get('FileSearch')?.payload as FileMatch[] || [];
 
@@ -592,10 +629,11 @@ export class PipelineEngine {
                         break;
                     }
                     case 'ContextSearch':
-                        result = await this.contextSearch.execute({
+                        const csOut = await this.contextSearch.execute({
                             query: context.query,
                             lookForPreviousFixes: step.args?.lookForPreviousFixes
                         });
+                        result = csOut.status === 'success' ? csOut.payload : null;
                         break;
                     case 'FilePartSearcher':
                         // If refineSearch is requested, we need files to search in
@@ -604,10 +642,11 @@ export class PipelineEngine {
 
                         // If we have an active file, search there
                         if (activeFile) {
-                            result = await this.filePartSearcher.execute({
+                            const fpsOut = await this.filePartSearcher.execute({
                                 filePath: activeFile,
                                 searchFor: { text: context.query } // Simplified
                             });
+                            result = fpsOut.status === 'success' ? fpsOut.payload : null;
                         } else if (foundFiles.length > 0) {
                             // Search up to 5 files in parallel
                             const filesToSearch = foundFiles.slice(0, 5);
@@ -618,7 +657,7 @@ export class PipelineEngine {
                                 })
                             ));
                             // Aggregate all matches
-                            result = searchResults.flatMap(r => r.payload || []);
+                            result = searchResults.flatMap(r => r.status === 'success' && r.payload ? r.payload : []);
                         } else {
                             result = [];
                         }
@@ -632,11 +671,12 @@ export class PipelineEngine {
                         break;
                     case 'ProcessPlanner':
                         const contextSearchForProcess = context.results.get('ContextSearch')?.payload;
-                        result = await this.processPlanner.execute({
+                        const ppOut = await this.processPlanner.execute({
                             query: context.query,
                             projectType: step.args?.projectType,
                             contextKnowledge: contextSearchForProcess?.memories?.filter((m: any) => m.type === 'knowledge') || []
                         });
+                        result = ppOut.status === 'success' ? ppOut.payload : null;
                         break;
                     case 'CodePlanner':
                         const processPlan = context.results.get('ProcessPlanner')?.payload;
@@ -645,7 +685,7 @@ export class PipelineEngine {
                         const contextAnalysis = context.results.get('ContextAnalyzer')?.payload;
                         const contextSearchForPlan = context.results.get('ContextSearch')?.payload;
 
-                        result = await this.codePlanner.execute({
+                        const cpOut = await this.codePlanner.execute({
                             query: context.query,
                             projectType: processPlan?.projectType || step.args?.projectType || 'web',
                             existingFiles: existingFiles,
@@ -653,49 +693,58 @@ export class PipelineEngine {
                             contextKnowledge: contextSearchForPlan?.memories?.filter((m: any) => m.type === 'knowledge') || [],
                             techStack: processPlan?.techStack
                         });
+                        result = cpOut.status === 'success' ? cpOut.payload : null;
                         break;
                     case 'TaskPlanner':
                         const cPlan = context.results.get('CodePlanner')?.payload;
-                        result = await this.taskPlanner.execute({
+                        const tpOut = await this.taskPlanner.execute({
                             query: context.query,
                             projectType: step.args?.projectType || 'web',
                             fileStructure: cPlan?.fileStructure || [],
                             interfaces: cPlan?.interfaces || [],
-                            apiEndpoints: cPlan?.apiEndpoints
+                            apiEndpoints: cPlan?.apiEndpoints,
+                            activeFilePath: context.activeFilePath
                         });
+                        result = tpOut.status === 'success' ? tpOut.payload : null;
                         break;
                     case 'VersionController':
-                        result = await this.versionController.execute({
+                        const vcOut = await this.versionController.execute({
                             action: step.args?.action || 'create_checkpoint',
                             description: 'Pipeline execution checkpoint'
                         } as any);
+                        result = vcOut.status === 'success' ? vcOut.payload : null;
                         break;
                     case 'CommandGenerator':
                         const tPlan = context.results.get('TaskPlanner')?.payload;
-                        result = await this.commandGenerator.execute({
+                        const cgOut = await this.commandGenerator.execute({
                             taskPlan: tPlan,
                             generateStructure: step.args?.generateStructure
                         } as any);
+                        result = cgOut.status === 'success' ? cgOut.payload : null;
                         break;
                     case 'CodeGenerator':
                         const tPlanForGen = context.results.get('TaskPlanner')?.payload;
                         const cPlanForGen = context.results.get('CodePlanner')?.payload;
                         const contextSearchForGen = context.results.get('ContextSearch')?.payload;
+                        const webSearchForGen = context.results.get('WebSearch');
 
-                        result = await this.codeGenerator.execute({
+                        const cgenOut = await this.codeGenerator.execute({
                             taskPlan: tPlanForGen,
                             codePlan: cPlanForGen,
-                            context: contextSearchForGen ? {
-                                knowledge: contextSearchForGen.memories?.filter((m: any) => m.type === 'knowledge') || []
-                            } : undefined
+                            context: {
+                                knowledge: contextSearchForGen?.memories?.filter((m: any) => m.type === 'knowledge') || [],
+                                webSearch: webSearchForGen ? { payload: webSearchForGen.payload } : undefined
+                            } as any
                         });
+                        result = cgenOut.status === 'success' ? cgenOut.payload : null;
                         break;
                     case 'CodeModifier':
                         const codeGenModifications = context.results.get('CodeGenerator')?.payload?.modifications || [];
-                        result = await this.codeModifier.execute({
+                        const cmOut = await this.codeModifier.execute({
                             modifications: codeGenModifications,
                             createCheckpoint: false
                         });
+                        result = cmOut.status === 'success' ? cmOut.payload : null;
                         break;
                     case 'Executor':
                         // Check if we should use dynamic execution loop
@@ -725,19 +774,21 @@ export class PipelineEngine {
                                 ];
                             }
 
-                            result = await this.executor.execute({
+                            const execOut = await this.executor.execute({
                                 commands: commands,
                                 cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath,
                                 runTests: step.args?.runTests
                             } as any);
+                            result = execOut.status === 'success' ? execOut.payload : null;
                         }
                         break;
                     case 'Architect':
-                         result = await this.architect.execute({
+                         const archOut = await this.architect.execute({
                              query: context.query,
                              projectType: step.args?.projectType,
                              existingFiles: context.results.get('FileSearch')?.payload?.map((f: FileMatch) => f.relativePath) || []
                          });
+                         result = archOut.status === 'success' ? archOut.payload : null;
                          break;
                     case 'QualityAssurance':
                          // QA needs access to original requirements and implemented files
@@ -748,7 +799,7 @@ export class PipelineEngine {
                          // QA might need test results from Executor if available
                          const execResult = context.results.get('Executor')?.payload;
                          
-                         result = await this.qualityAssurance.execute({
+                         const qaOut = await this.qualityAssurance.execute({
                              originalRequirements: step.args?.originalRequirements || context.query,
                              implementedFiles: implementedFiles,
                              testResults: execResult ? {
@@ -756,11 +807,13 @@ export class PipelineEngine {
                                  output: execResult.output || execResult.stdout || ''
                              } : undefined
                          });
+                         result = qaOut.status === 'success' ? qaOut.payload : null;
                          break;
                     case 'DocWriter':
-                        result = await this.docWriter.execute({
+                        const dwOut = await this.docWriter.execute({
                             context: Object.fromEntries(context.results)
                         } as any);
+                        result = dwOut.status === 'success' ? dwOut.payload : null;
                         break;
                     case 'ContentRetriever':
                         let fullContent = "";
@@ -882,13 +935,15 @@ export class PipelineEngine {
             // We reuse the existing CodePlanner result if available, or create a minimal one
             const codePlan = context.results.get('CodePlanner')?.payload as any;
             const contextSearchResult = context.results.get('ContextSearch')?.payload;
+            const webSearchResult = context.results.get('WebSearch'); // Pass full AgentOutput
 
             const codeGenResult = await this.codeGenerator.execute({
                 taskPlan: miniPlan,
                 codePlan: codePlan || { projectType: 'script', existingFiles: [], techStack: [] },
-                context: contextSearchResult ? {
-                    knowledge: contextSearchResult.memories?.filter((m: any) => m.type === 'knowledge') || []
-                } : undefined
+                context: {
+                    knowledge: contextSearchResult?.memories?.filter((m: any) => m.type === 'knowledge') || [],
+                    webSearch: webSearchResult
+                } as any
             });
 
             // B. Generate Shell Commands
@@ -956,14 +1011,25 @@ export class PipelineEngine {
             contextOutput += `\n### 🎯 Intent Analysis\n- Type: ${intent.queryType}\n- Complexity: ${intent.complexity}\n`;
         }
 
-        // 3. Add Analyzed Code Context
+        // 3. Add Web Search Results
+        if (context.results.has('WebSearch')) {
+            const webResult = context.results.get('WebSearch')?.payload;
+            if (webResult) {
+                contextOutput += `\n### 🌐 Web Search Results\nSource: ${webResult.source}\n\n${webResult.content}\n`;
+            }
+        }
+
+        // 4. Add Analyzed Code Context
         // (This might have been added by ContextAnalyzer result already, but if not...)
         if (context.results.has('ContextAnalyzer')) {
-            const analysis = context.results.get('ContextAnalyzer')?.payload as AnalyzedContext;
-            contextOutput += `\n### 📦 Code Context (${analysis.totalFiles} files analyzed)\n`;
-            for (const chunk of analysis.chunks) {
-                contextOutput += `\nFile: ${chunk.filePath} (lines ${chunk.startLine}-${chunk.endLine})\n`;
-                contextOutput += `\`\`\`${chunk.filePath.split('.').pop()}\n${chunk.content}\n\`\`\`\n`;
+            const result = context.results.get('ContextAnalyzer');
+            if (result && result.status === 'success' && result.payload) {
+                const analysis = result.payload as AnalyzedContext;
+                contextOutput += `\n### 📦 Code Context (${analysis.totalFiles} files analyzed)\n`;
+                for (const chunk of analysis.chunks) {
+                    contextOutput += `\nFile: ${chunk.filePath} (lines ${chunk.startLine}-${chunk.endLine})\n`;
+                    contextOutput += `\`\`\`${chunk.filePath.split('.').pop()}\n${chunk.content}\n\`\`\`\n`;
+                }
             }
         } else if (context.results.has('FileSearch')) {
             // Fallback to raw file list if analysis failed/skipped

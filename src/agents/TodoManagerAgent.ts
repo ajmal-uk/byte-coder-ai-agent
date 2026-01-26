@@ -46,9 +46,9 @@ export class TodoManagerAgent extends BaseAgent<TodoManagerInput, TodoManagerOut
         const alternatives = strategies[originalStrategy];
         if (!alternatives) return null;
 
-        // attemptCount starts at 1 (original). attemptCount 2 = index 0.
-        const index = attemptCount - 2;
-        return index < alternatives.length ? alternatives[index] : null;
+        // attemptCount starts at 1 (original failure). attemptCount 1 = index 0 (first alternative).
+        const index = attemptCount - 1;
+        return index >= 0 && index < alternatives.length ? alternatives[index] : null;
     }
 
     async execute(input: TodoManagerInput): Promise<AgentOutput<TodoManagerOutput>> {

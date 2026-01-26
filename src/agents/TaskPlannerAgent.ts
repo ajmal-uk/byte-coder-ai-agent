@@ -4,6 +4,7 @@
  */
 
 import { BaseAgent, AgentOutput, TaskNode } from '../core/AgentTypes';
+import { ByteAIClient } from '../byteAIClient';
 
 export interface TaskPlannerInput {
     query: string;
@@ -11,6 +12,7 @@ export interface TaskPlannerInput {
     fileStructure: string[];
     interfaces: string[];
     apiEndpoints?: { method: string; path: string; description: string }[];
+    activeFilePath?: string;
 }
 
 export interface TaskPlannerResult {
@@ -22,9 +24,11 @@ export interface TaskPlannerResult {
 
 export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerResult> {
     private taskIdCounter = 0;
+    private client: ByteAIClient;
 
     constructor() {
         super({ name: 'TaskPlanner', timeout: 10000 });
+        this.client = new ByteAIClient();
     }
 
     async execute(input: TaskPlannerInput): Promise<AgentOutput<TaskPlannerResult>> {
@@ -33,7 +37,7 @@ export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerRes
 
         try {
             // Generate task graph
-            const taskGraph = this.generateTaskGraph(input);
+            const taskGraph = await this.generateTaskGraph(input);
 
             // Calculate execution order (topological sort)
             const executionOrder = this.topologicalSort(taskGraph);
@@ -63,7 +67,7 @@ export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerRes
     /**
      * Detect the type of task based on input analysis
      */
-    private detectTaskType(input: TaskPlannerInput): 'script_execution' | 'scaffold' | 'stress_test' | 'command_sequence' | 'generic' {
+    private detectTaskType(input: TaskPlannerInput): 'script_execution' | 'scaffold' | 'stress_test' | 'command_sequence' | 'simple_modification' | 'complex_modification' | 'generic' {
         const query = input.query.toLowerCase();
         
         // 1. Explicit project type override
@@ -74,12 +78,34 @@ export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerRes
             return 'stress_test';
         }
 
-        // 3. Check for Multi-Step Command Sequence OR Single Shell Command
+        // 3. Check for Complex Modification (multi-step, architectural, or ambiguous)
+        const complexKeywords = ['refactor', 'rewrite', 'optimize', 'structure', 'architecture', 'pattern', 'implement feature'];
+        const multiStepKeywords = [' and ', ' then ', ' also ', ',', ';'];
+        
+        const isComplex = complexKeywords.some(k => query.includes(k));
+        const isMultiStep = multiStepKeywords.filter(k => query.includes(k)).length >= 1;
+        
+        if (isComplex || (isMultiStep && query.length > 30)) {
+            return 'complex_modification';
+        }
+
+        // 4. Check for Simple Modification (create/edit/delete specific lines or files)
+        // Heuristic: specific line numbers, "remove line", "edit line", "create file" with content
+        const hasLineNumbers = /\b(line|lines)\s+\d+/.test(query);
+        const hasImplicitLineAction = /(remove|delete|edit|change)\s+\d+/.test(query);
+        const hasSimpleAction = /(create|make|remove|delete|edit|change|update)\s+(file|line)/.test(query);
+        const isShort = query.split(' ').length < 30; // Increased threshold slightly
+        
+        if (isShort && (hasLineNumbers || hasImplicitLineAction || hasSimpleAction) && !query.includes('project') && !query.includes('app')) {
+            return 'simple_modification';
+        }
+
+        // 5. Check for Multi-Step Command Sequence OR Single Shell Command
         // Keywords indicating sequence or specific terminal operations
         const sequenceKeywords = ['then', 'after', 'and', 'clone', 'commit', 'push', 'pull', 'install', 'curl', 'wget', 'git'];
         const commonBinaries = ['ls', 'pwd', 'cp', 'mv', 'rm', 'mkdir', 'cat', 'echo', 'touch', 'grep', 'find', 'sed', 'awk', 'tar', 'zip', 'unzip', 'ps', 'kill', 'top', 'htop', 'df', 'du', 'npx', 'npm', 'yarn', 'pnpm', 'node', 'python', 'pip'];
 
-        const hasSequence = sequenceKeywords.filter(k => query.includes(k)).length >= 2;
+        const hasSequence = sequenceKeywords.some(k => query.includes(' ' + k + ' ')) || query.includes(' && ') || query.includes(';');
         const isGitOperation = query.startsWith('git') || query.includes('clone repo') || query.includes('commit code');
         const isShellCommand = commonBinaries.some(bin => query.startsWith(bin + ' ') || query === bin);
         
@@ -157,15 +183,44 @@ export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerRes
         return tasks;
     }
 
+    private generateSimpleModificationTasks(input: TaskPlannerInput): TaskNode[] {
+        const tasks: TaskNode[] = [];
+        const query = input.query;
+        
+        // Identify target file if possible
+        let filePath = input.activeFilePath;
+        // Try to extract filename from query
+        const words = query.split(' ');
+        for (const word of words) {
+            if (word.includes('.') && word.length > 2) {
+                // Potential filename
+                filePath = word;
+            }
+        }
+
+        tasks.push(this.createTask(
+            input.query, // Use the user query directly as the task description
+            filePath,
+            [],
+            undefined
+        ));
+
+        return tasks;
+    }
+
     /**
      * Generate task graph from input
      */
-    private generateTaskGraph(input: TaskPlannerInput): TaskNode[] {
+    private async generateTaskGraph(input: TaskPlannerInput): Promise<TaskNode[]> {
         const taskType = this.detectTaskType(input);
 
         switch (taskType) {
             case 'stress_test':
                 return this.generateStressTestTasks(input);
+            case 'simple_modification':
+                return this.generateSimpleModificationTasks(input);
+            case 'complex_modification':
+                return this.generateComplexModificationTasks(input);
             case 'command_sequence':
                 return this.generateCommandSequenceTasks(input);
             case 'script_execution':
@@ -174,8 +229,131 @@ export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerRes
                 return this.generateScaffoldTasks(input);
             case 'generic':
             default:
-                return this.generateGenericTasks(input);
+                return await this.generateDynamicTasks(input);
         }
+    }
+
+    /**
+     * Generate complex modification tasks using LLM
+     */
+    private async generateComplexModificationTasks(input: TaskPlannerInput): Promise<TaskNode[]> {
+        const prompt = `
+You are a Senior Software Architect.
+User Request: "${input.query}"
+Project Type: ${input.projectType}
+Existing Files: ${input.fileStructure.slice(0, 30).join(', ')}
+
+The user wants to perform a complex modification. 
+Break this down into a series of granular, atomic modification steps.
+Each step should target a specific file or component.
+Ensure the order is logical (e.g., update interface -> implement class -> update tests).
+
+Output a JSON array of task objects.
+Format:
+[
+  {
+    "id": "task_1",
+    "description": "Specific task description (e.g. 'Add 'factorial' method to Calculator class')",
+    "type": "code",
+    "dependencies": [],
+    "filePath": "Target file path if known"
+  }
+]
+Rules:
+1. Break down large changes into smaller, testable steps.
+2. If multiple files need changes, create separate tasks for each.
+3. Include verification/test updates as the last step.
+4. Output ONLY JSON.
+`;
+
+        try {
+            const response = await this.client.streamResponse(
+                prompt,
+                () => {},
+                (err: Error) => console.warn('Planning LLM error:', err)
+            );
+
+            const tasks = this.parseTaskResponse(response);
+            if (tasks.length > 0) return tasks;
+            
+            return this.generateGenericTasks(input);
+        } catch (error) {
+            console.error('Complex planning failed:', error);
+            return this.generateGenericTasks(input);
+        }
+    }
+
+    /**
+     * Generate dynamic tasks using LLM for generic/complex requests
+     */
+    private async generateDynamicTasks(input: TaskPlannerInput): Promise<TaskNode[]> {
+        const prompt = this.constructDynamicPlanningPrompt(input);
+        
+        try {
+            const response = await this.client.streamResponse(
+                prompt,
+                () => {},
+                (err: Error) => console.warn('Planning LLM error:', err)
+            );
+
+            const tasks = this.parseTaskResponse(response);
+            if (tasks.length > 0) return tasks;
+            
+            // Fallback if parsing fails
+            return this.generateGenericTasks(input);
+        } catch (error) {
+            console.error('Dynamic planning failed:', error);
+            return this.generateGenericTasks(input);
+        }
+    }
+
+    private constructDynamicPlanningPrompt(input: TaskPlannerInput): string {
+        return `You are a Senior Technical Project Manager.
+User Request: "${input.query}"
+Project Type: ${input.projectType}
+Existing Files: ${input.fileStructure.slice(0, 20).join(', ')}
+
+Break this request down into a logical series of dependent tasks.
+Output a JSON array of task objects.
+Format:
+[
+  {
+    "id": "task_1",
+    "description": "Clear, actionable task description (e.g. 'Create src/utils.ts with helper functions')",
+    "type": "code" | "command",
+    "dependencies": [],
+    "command": "optional shell command if type is command"
+  }
+]
+Rules:
+1. Keep it efficient (3-6 tasks max for typical requests).
+2. Ensure dependencies are logical (create file before editing it).
+3. Use specific filenames where possible.
+4. Output ONLY JSON.
+`;
+    }
+
+    private parseTaskResponse(response: string): TaskNode[] {
+        try {
+            const jsonMatch = response.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) return [];
+            
+            const tasks = JSON.parse(jsonMatch[0]);
+            if (Array.isArray(tasks)) {
+                return tasks.map((t: any) => ({
+                    id: t.id || `task_${this.taskIdCounter++}`,
+                    description: t.description,
+                    dependencies: t.dependencies || [],
+                    status: 'pending',
+                    type: t.type || 'code',
+                    command: t.command,
+                    retryCount: 0
+                }));
+            }
+        } catch (e) {
+            console.error('Failed to parse planner JSON', e);
+        }
+        return [];
     }
 
     /**
@@ -289,7 +467,7 @@ export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerRes
         
         // Dynamic Language Detection
         const languageMap: { [key: string]: { ext: string, cmd: string, name: string } } = {
-            'python': { ext: 'py', cmd: 'python', name: 'python' },
+            'python': { ext: 'py', cmd: 'python3', name: 'python' },
             'javascript': { ext: 'js', cmd: 'node', name: 'javascript' },
             'js': { ext: 'js', cmd: 'node', name: 'javascript' },
             'typescript': { ext: 'ts', cmd: 'npx ts-node', name: 'typescript' },

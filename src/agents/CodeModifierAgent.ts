@@ -116,42 +116,174 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
             }
 
             // Find the target block
-            const searchBlock = mod.searchBlock.trim();
-            const startLine = mod.startLine - 1; // Convert to 0-indexed
-            const endLine = mod.endLine - 1;
-
-            // Validate line range
-            if (startLine < 0 || endLine >= lines.length) {
-                return {
+            const searchBlock = mod.searchBlock?.trim();
+            let startLine = mod.startLine - 1; // Convert to 0-indexed
+            let endLine = mod.endLine - 1;
+            
+            // If lines are not provided or invalid, default to whole file if searchBlock exists
+            if ((isNaN(startLine) || isNaN(endLine) || startLine < 0 || endLine < 0) && searchBlock) {
+                 startLine = 0;
+                 endLine = lines.length - 1;
+            } else if (isNaN(startLine) || isNaN(endLine)) {
+                 // Fallback if no lines and no search block
+                 return {
                     file: mod.filePath,
                     success: false,
                     linesModified: 0,
-                    error: `Invalid line range: ${mod.startLine}-${mod.endLine} (file has ${lines.length} lines)`
-                };
+                    error: `Invalid modification parameters: missing line numbers and search block`
+                 };
             }
 
-            // Get the target section
-            const targetSection = lines.slice(startLine, endLine + 1).join('\n');
-
-            // Verify the search block exists in the target section
-            if (!targetSection.includes(searchBlock)) {
-                // Try fuzzy match
-                const fuzzyMatch = this.fuzzyFind(targetSection, searchBlock);
-                if (!fuzzyMatch) {
+            // Validate line range
+            if (startLine < 0 || endLine >= lines.length) {
+                // If out of bounds but we have a search block, try searching whole file
+                if (searchBlock) {
+                    startLine = 0;
+                    endLine = lines.length - 1;
+                } else {
                     return {
                         file: mod.filePath,
                         success: false,
                         linesModified: 0,
-                        error: `Search block not found in lines ${mod.startLine}-${mod.endLine}`
+                        error: `Invalid line range: ${mod.startLine}-${mod.endLine} (file has ${lines.length} lines)`
                     };
                 }
             }
 
-            // Apply the replacement
-            const newContent = targetSection.replace(searchBlock, mod.replaceBlock);
+            // Get the target section
+            let targetSection = lines.slice(startLine, endLine + 1).join('\n');
+
+            // Verify and Find Target
+            let useFuzzy = false;
+            let fuzzyMatchResult: { start: number, end: number } | null = null;
+            
+            // Default action is replace if not specified
+            const action = mod.action || 'replace';
+
+            if (searchBlock) {
+                // 1. Exact Match
+                if (targetSection.includes(searchBlock)) {
+                    // All good, logic continues below
+                } else {
+                    // 2. Scope Expansion (if allowed)
+                    if (mod.startLine > 0 || mod.endLine < lines.length) {
+                        const fullContent = lines.join('\n');
+                        if (fullContent.includes(searchBlock)) {
+                            targetSection = fullContent;
+                            startLine = 0;
+                            endLine = lines.length - 1;
+                        } else {
+                            // Try fuzzy in full content
+                            const fullLines = lines;
+                            fuzzyMatchResult = this.findFuzzyMatch(fullLines, searchBlock) || 
+                                             this.findTokenMatch(fullContent, searchBlock);
+                            
+                            if (fuzzyMatchResult) {
+                                targetSection = fullContent;
+                                startLine = 0;
+                                endLine = lines.length - 1;
+                                useFuzzy = true;
+                            } else {
+                                return {
+                                    file: mod.filePath,
+                                    success: false,
+                                    linesModified: 0,
+                                    error: `Search block not found in file (tried exact and fuzzy)`
+                                };
+                            }
+                        }
+                    } else {
+                        // 3. Fuzzy Match in restricted scope
+                        fuzzyMatchResult = this.findFuzzyMatch(targetSection.split('\n'), searchBlock) || 
+                                         this.findTokenMatch(targetSection, searchBlock);
+                        
+                        if (fuzzyMatchResult) {
+                            useFuzzy = true;
+                        } else {
+                            return {
+                                file: mod.filePath,
+                                success: false,
+                                linesModified: 0,
+                                error: `Search block not found in target section`
+                            };
+                        }
+                    }
+                }
+            }
+            
+            // Apply the modification based on action
+            let newContent;
+            
+            // Helper to get split parts
+            const getParts = () => {
+                if (searchBlock) {
+                    if (!useFuzzy && targetSection.includes(searchBlock)) {
+                        const idx = targetSection.indexOf(searchBlock);
+                        return {
+                            before: targetSection.substring(0, idx),
+                            match: searchBlock,
+                            after: targetSection.substring(idx + searchBlock.length),
+                            indent: this.getIndentation(searchBlock.split('\n')[0]) // Approximate
+                        };
+                    } else if (useFuzzy && fuzzyMatchResult) {
+                        const targetLines = targetSection.split('\n');
+                        const beforeLines = targetLines.slice(0, fuzzyMatchResult.start);
+                        const matchLines = targetLines.slice(fuzzyMatchResult.start, fuzzyMatchResult.end + 1);
+                        const afterLines = targetLines.slice(fuzzyMatchResult.end + 1);
+                        
+                        return {
+                            before: beforeLines.join('\n') + (beforeLines.length > 0 ? '\n' : ''),
+                            match: matchLines.join('\n'),
+                            after: (afterLines.length > 0 ? '\n' : '') + afterLines.join('\n'),
+                            indent: this.getIndentation(targetLines[fuzzyMatchResult.start])
+                        };
+                    }
+                }
+                // Fallback for no search block (line replacement)
+                return null;
+            };
+
+            const parts = getParts();
+
+            if (parts) {
+                // We found the block
+                const adjustedReplace = this.adjustIndentation(mod.replaceBlock, parts.indent);
+                
+                switch (action) {
+                    case 'insert_before':
+                        newContent = parts.before + adjustedReplace + '\n' + parts.match + parts.after;
+                        break;
+                    case 'insert_after':
+                        newContent = parts.before + parts.match + '\n' + adjustedReplace + parts.after;
+                        break;
+                    case 'delete':
+                        newContent = parts.before + parts.after;
+                        break;
+                    case 'replace':
+                    default:
+                        newContent = parts.before + adjustedReplace + parts.after;
+                        break;
+                }
+            } else {
+                 // Direct line replacement (only supports replace/delete effectively)
+                 if (action === 'delete') {
+                     newContent = ''; // Or remove lines? This replaces range with empty string
+                 } else {
+                     newContent = mod.replaceBlock;
+                 }
+            }
+            
+            let replacementLines: string[];
+            if (newContent === '') {
+                // Treat empty string as deletion (0 lines)
+                replacementLines = [];
+            } else {
+                replacementLines = newContent.split('\n');
+            }
+            
             const newLines = [
                 ...lines.slice(0, startLine),
-                ...newContent.split('\n'),
+                ...replacementLines,
                 ...lines.slice(endLine + 1)
             ];
             const finalContent = newLines.join('\n');
@@ -317,14 +449,182 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
     }
 
     /**
-     * Fuzzy find a block in content
+     * Fuzzy find a block in content lines and return range indices
+     * Uses similarity metric to allow for minor differences (quotes, spacing, typos)
      */
-    private fuzzyFind(content: string, searchBlock: string): boolean {
-        // Normalize whitespace for comparison
-        const normalizedContent = content.replace(/\s+/g, ' ').trim();
-        const normalizedSearch = searchBlock.replace(/\s+/g, ' ').trim();
+    private findFuzzyMatch(lines: string[], searchBlock: string): { start: number, end: number } | null {
+        const searchLines = searchBlock.split('\n').map(l => l.trim()).filter(l => l !== '');
+        if (searchLines.length === 0) return null;
 
-        return normalizedContent.includes(normalizedSearch);
+        for (let i = 0; i < lines.length; i++) {
+            // Check if first line matches with similarity threshold
+            if (this.calculateSimilarity(lines[i].trim(), searchLines[0]) >= 0.85) {
+                let currentLine = i;
+                let searchIdx = 0;
+                let match = true;
+                let matchedLines = 0;
+
+                // Check subsequent lines
+                while (searchIdx < searchLines.length) {
+                    if (currentLine >= lines.length) {
+                        match = false;
+                        break;
+                    }
+
+                    const lineContent = lines[currentLine].trim();
+                    // Skip empty lines in content
+                    if (lineContent === '') {
+                        currentLine++;
+                        continue;
+                    }
+
+                    if (this.calculateSimilarity(lineContent, searchLines[searchIdx]) < 0.85) {
+                        match = false;
+                        break;
+                    }
+
+                    currentLine++;
+                    searchIdx++;
+                    matchedLines++;
+                }
+
+                if (match && matchedLines === searchLines.length) {
+                    return { start: i, end: currentLine - 1 };
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Calculate string similarity (0.0 to 1.0) using Dice Coefficient
+     * Good for catching quote differences, minor typos, spacing
+     */
+    private calculateSimilarity(s1: string, s2: string): number {
+        // Normalize quotes and remove whitespace
+        const str1 = s1.replace(/['"]/g, '"').replace(/\s+/g, '').toLowerCase();
+        const str2 = s2.replace(/['"]/g, '"').replace(/\s+/g, '').toLowerCase();
+
+        if (str1 === str2) return 1.0;
+        if (str1.length < 2 || str2.length < 2) return 0.0;
+
+        const bigrams1 = new Map<string, number>();
+        for (let i = 0; i < str1.length - 1; i++) {
+            const bigram = str1.substring(i, i + 2);
+            bigrams1.set(bigram, (bigrams1.get(bigram) || 0) + 1);
+        }
+
+        let intersection = 0;
+        for (let i = 0; i < str2.length - 1; i++) {
+            const bigram = str2.substring(i, i + 2);
+            if (bigrams1.has(bigram) && bigrams1.get(bigram)! > 0) {
+                intersection++;
+                bigrams1.set(bigram, bigrams1.get(bigram)! - 1);
+            }
+        }
+
+        return (2.0 * intersection) / (str1.length - 1 + str2.length - 1);
+    }
+
+    /**
+     * Token-based fuzzy match that ignores whitespace differences
+     */
+    private findTokenMatch(content: string, searchBlock: string): { start: number, end: number } | null {
+        // Normalize: collapse whitespace to single space
+        const normalize = (str: string) => {
+            let normalized = "";
+            const map: number[] = []; // normalized index -> original index
+            
+            let lastWasSpace = false;
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                if (/\s/.test(char)) {
+                    if (!lastWasSpace) {
+                        normalized += " ";
+                        map.push(i);
+                        lastWasSpace = true;
+                    }
+                    // Skip subsequent spaces
+                } else {
+                    normalized += char;
+                    map.push(i);
+                    lastWasSpace = false;
+                }
+            }
+            return { str: normalized.trim(), map };
+        };
+
+        const normContent = normalize(content);
+        const normSearch = normalize(searchBlock);
+
+        const idx = normContent.str.indexOf(normSearch.str);
+        
+        if (idx !== -1) {
+            // Map back to original indices
+            const startOriginalIdx = normContent.map[idx];
+            // We need the end index. 
+            // The length of match in normalized string corresponds to some length in original.
+            // But map only stores indices for retained chars.
+            // The end of match in normalized is idx + normSearch.str.length - 1
+            const endNormIdx = idx + normSearch.str.length - 1;
+            
+            if (endNormIdx >= normContent.map.length) return null; // Should not happen
+            
+            const endOriginalIdx = normContent.map[endNormIdx];
+            
+            // Expand endOriginalIdx to include any trailing whitespace in original if needed?
+            // Usually we just want the line number.
+            
+            const getLine = (charIdx: number) => {
+                const sub = content.substring(0, charIdx);
+                return (sub.match(/\n/g) || []).length;
+            };
+            
+            return {
+                start: getLine(startOriginalIdx),
+                end: getLine(endOriginalIdx)
+            };
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get indentation of a line
+     */
+    private getIndentation(line: string): string {
+        const match = line.match(/^[\s\t]*/);
+        return match ? match[0] : '';
+    }
+
+    /**
+     * Adjust indentation of a block to match reference
+     */
+    private adjustIndentation(block: string, indent: string): string {
+        const lines = block.split('\n');
+        if (lines.length === 0) return block;
+        
+        // Detect base indentation of the block (ignoring first line if it's often 0-indented in templates)
+        // Actually, usually we just want to prepend 'indent' to every line?
+        // But if block already has indentation, we might double it.
+        // Strategy: Strip common indentation, then apply new indent.
+        
+        // 1. Find common indent
+        const commonIndent = lines
+            .filter(l => l.trim().length > 0)
+            .reduce((min, line) => {
+                const cur = this.getIndentation(line);
+                return cur.length < min.length ? cur : min;
+            }, lines[0].match(/^[\s\t]*/)![0]);
+
+        // 2. Re-indent
+        return lines.map(line => {
+            if (line.trim().length === 0) return '';
+            if (line.startsWith(commonIndent)) {
+                return indent + line.substring(commonIndent.length);
+            }
+            return indent + line;
+        }).join('\n');
     }
 
     /**

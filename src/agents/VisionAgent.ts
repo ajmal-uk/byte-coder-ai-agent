@@ -225,7 +225,9 @@ export class VisionAgent extends BaseAgent<VisionInput, VisionResult> {
 
         // Check contrast ratios
         if (analysis.colors.length >= 2) {
-            notes.push(`Verify contrast ratio between ${analysis.colors[0]} and ${analysis.colors[1]} meets WCAG 2.1 AA (4.5:1 for text)`);
+            const ratio = this.calculateContrastRatio(analysis.colors[0], analysis.colors[1]);
+            const status = ratio >= 4.5 ? 'meets' : 'fails';
+            notes.push(`Contrast ratio between ${analysis.colors[0]} and ${analysis.colors[1]} is ${ratio.toFixed(2)}:1 (${status} WCAG 2.1 AA)`);
         }
 
         // Element-specific notes

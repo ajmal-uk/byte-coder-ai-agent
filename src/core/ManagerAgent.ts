@@ -44,7 +44,7 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
             weight: 1.0
         },
         'Modify': {
-            keywords: ['change', 'update', 'modify', 'edit', 'refactor', 'improve', 'optimize', 'enhance', 'replace'],
+            keywords: ['change', 'update', 'modify', 'edit', 'refactor', 'improve', 'optimize', 'enhance', 'replace', 'remove', 'delete'],
             weight: 0.9
         },
         'Explain': {
@@ -65,6 +65,14 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
         },
         'Command': {
             keywords: ['run', 'execute', 'command', 'terminal', 'shell', 'git', 'npm', 'yarn', 'curl', 'wget', 'clone', 'commit', 'push', 'pull', 'install', 'test api', 'check url', 'ls ', 'pwd', 'cp ', 'mv ', 'rm ', 'mkdir', 'cat ', 'echo ', 'touch '],
+            weight: 0.95
+        },
+        'VersionControl': {
+            keywords: ['checkpoint', 'snapshot', 'rollback', 'restore', 'version', 'history', 'undo', 'save state', 'backup', 'revert'],
+            weight: 0.95
+        },
+        'WebSearch': {
+            keywords: ['search web', 'google', 'find online', 'look up', 'check npm', 'check pypi', 'web search', 'internet', 'search for'],
             weight: 0.95
         }
     };
@@ -128,7 +136,7 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
     private classifyIntent(query: string): { intent: IntentType; intentConfidence: number } {
         const lowerQuery = query.toLowerCase();
         const scores: Record<IntentType, number> = {
-            'Fix': 0, 'Build': 0, 'Modify': 0, 'Explain': 0, 'Design': 0, 'Audit': 0, 'Expand': 0, 'Command': 0
+            'Fix': 0, 'Build': 0, 'Modify': 0, 'Explain': 0, 'Design': 0, 'Audit': 0, 'Expand': 0, 'Command': 0, 'VersionControl': 0, 'WebSearch': 0
         };
 
         // Score each intent based on keyword matches
@@ -181,6 +189,10 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
             if (query.includes(indicator)) return 'medium';
         }
 
+        for (const indicator of this.COMPLEXITY_INDICATORS.simple) {
+            if (query.includes(indicator)) return 'simple';
+        }
+
         // Context-based complexity
         if (!input.activeFilePath && !input.hasSelection) {
             // No context = potentially complex (need to search)
@@ -229,6 +241,49 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
     ): PipelineStep[] {
         const pipeline: PipelineStep[] = [];
         let step = 1;
+
+        // VERSION CONTROL PHASE
+        if (intent === 'VersionControl') {
+            const vcAction = this.determineVersionControlAction(input.query);
+            pipeline.push({
+                step: step++,
+                agent: 'VersionController',
+                parallel: false,
+                required: true,
+                args: { 
+                    action: vcAction.action,
+                    sessionId: input.sessionId,
+                    requestId: input.requestId,
+                    ...vcAction.args
+                }
+            });
+            return pipeline;
+        }
+
+        // WEB SEARCH PHASE
+        if (intent === 'WebSearch') {
+            pipeline.push({
+                step: step++,
+                agent: 'WebSearch',
+                parallel: false,
+                required: true,
+                args: { query: input.query }
+            });
+
+            // Add ContextAnalyzer to summarize/format the results for the user
+            pipeline.push({
+                step: step++,
+                agent: 'ContextAnalyzer',
+                parallel: false,
+                required: true,
+                args: { 
+                    summarize: true,
+                    contextType: 'web_search_results'
+                }
+            });
+            
+            return pipeline;
+        }
 
         // DISCOVERY PHASE (for low confidence or vague queries)
         if (action === 'discover' || action === 'verify' || action === 'handoff') {
@@ -316,9 +371,10 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
         }
 
         // PLANNING PHASE (for complex or build intents)
-        if (intent === 'Build' || intent === 'Design' || intent === 'Command' || complexity === 'complex') {
+        if (intent === 'Build' || intent === 'Design' || intent === 'Command' || intent === 'Modify' || intent === 'Fix' || complexity === 'complex') {
             // Add Architect Agent for high-level system design
-            // Only for Build/Design or very complex tasks, not for simple Command sequences
+            // Enable Architect for Build, Design, and Complex Modify/Fix tasks
+            // Skip for simple Commands or simple Fixes
             if (intent === 'Build' || intent === 'Design' || (complexity === 'complex' && intent !== 'Command')) {
                 pipeline.push({
                     step: step++,
@@ -498,9 +554,76 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
             'Design': 'Analyzing requirements and architecting solution...',
             'Audit': 'Scanning codebase for issues...',
             'Expand': 'Retrieving full content...',
-            'Command': 'Preparing terminal commands...'
+            'Command': 'Preparing terminal commands...',
+            'VersionControl': 'Managing version history...',
+            'WebSearch': 'Searching the web...'
         };
 
         return messages[intent] || 'Processing your request...';
+    }
+
+    /**
+     * Determine the specific Version Control action from the query
+     */
+    private determineVersionControlAction(query: string): { action: string; args: any } {
+        const lowerQuery = query.toLowerCase();
+        
+        // Create/Save
+        if (lowerQuery.includes('create') || lowerQuery.includes('save') || lowerQuery.includes('backup') || lowerQuery.includes('snapshot')) {
+            return { action: 'create_checkpoint', args: { description: query } };
+        }
+        
+        // Diff/Changes
+        if (lowerQuery.includes('diff') || lowerQuery.includes('change') || lowerQuery.includes('compare')) {
+            // "what changed" -> get_diff
+            return { action: 'get_diff', args: { checkpointId: 'latest' } }; // Default to diffing against latest
+        }
+
+        // Search History
+        if (lowerQuery.includes('search') || lowerQuery.includes('find') || lowerQuery.includes('lookup')) {
+            return { 
+                action: 'search_history', 
+                args: { searchQuery: query.replace(/search|find|lookup|history|checkpoint|version/gi, '').trim() } 
+            };
+        }
+        
+        // List/History
+        if (lowerQuery.includes('list') || lowerQuery.includes('show') || lowerQuery.includes('history') || lowerQuery.includes('checkpoints') || lowerQuery.includes('log')) {
+            return { action: 'list_checkpoints', args: {} };
+        }
+        
+        // Rollback/Undo
+        if (lowerQuery.includes('rollback') || lowerQuery.includes('restore') || lowerQuery.includes('revert') || lowerQuery.includes('undo') || lowerQuery.includes('reset')) {
+            // Check for specific checkpoint ID or "latest"/"previous"
+            const parts = query.split(' ');
+            
+            // Explicit ID
+            const potentialId = parts.find(p => p.length > 5 && /[a-z0-9]/.test(p) && !['rollback', 'restore', 'revert', 'checkpoint'].includes(p.toLowerCase()));
+            
+            // Keywords
+            let checkpointId = potentialId;
+            if (lowerQuery.includes('previous') || lowerQuery.includes('last') || lowerQuery.includes('undo')) {
+                checkpointId = 'previous';
+            } else if (lowerQuery.includes('latest') || lowerQuery.includes('current')) {
+                checkpointId = 'latest';
+            }
+
+            return { 
+                action: 'rollback', 
+                args: { 
+                    checkpointId: checkpointId || 'latest', // Default to latest if just "rollback"
+                    files: undefined 
+                } 
+            };
+        }
+        
+        // Delete
+        if (lowerQuery.includes('delete') || lowerQuery.includes('remove') || lowerQuery.includes('clear')) {
+            // If "delete all", maybe mapped to a separate action or handled carefully
+            return { action: 'delete_checkpoint', args: {} };
+        }
+        
+        // Default to listing if unclear
+        return { action: 'list_checkpoints', args: {} };
     }
 }

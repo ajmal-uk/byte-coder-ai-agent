@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { BaseAgent, AgentOutput, FileLocation } from '../core/AgentTypes';
+import { BaseAgent, AgentOutput } from '../core/AgentTypes';
 
 export interface FilePartSearchInput {
     filePath: string;
@@ -13,6 +13,7 @@ export interface FilePartSearchInput {
         elementType?: string;  // 'button', 'function', 'class', 'component', etc.
         text?: string;         // Text content to find
         name?: string;         // Function/class/variable name
+        line?: number;         // Specific line number to analyze (1-based)
         props?: Record<string, any>;  // Component props to match
         eventHandler?: string; // Event handler name (onClick, onSubmit, etc.)
     };
@@ -43,6 +44,7 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
             /(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>/g,
             /(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?function/g,
             /(\w+)\s*:\s*(?:async\s*)?\([^)]*\)\s*=>/g,  // method in object
+            /(\w+)\s*\([^)]*\)\s*(?::\s*\w+)?\s*\{/g,    // method in class/object
             /def\s+(\w+)\s*\(/g, // Python
         ],
         'class': [
@@ -98,6 +100,10 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
             const matches: FilePartMatch[] = [];
 
             // Search based on input criteria
+            if (input.searchFor.line) {
+                matches.push(...this.findByLine(lines, input.searchFor.line, input.filePath));
+            }
+
             if (input.searchFor.name) {
                 matches.push(...this.findByName(lines, input.searchFor.name, input.filePath));
             }
@@ -132,6 +138,37 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
     }
 
     /**
+     * Find code block at specific line
+     */
+    private findByLine(lines: string[], lineNumber: number, filePath: string): FilePartMatch[] {
+        const matches: FilePartMatch[] = [];
+        const index = lineNumber - 1;
+
+        if (index < 0 || index >= lines.length) return matches;
+
+        // Try to find if this line starts a block
+        const blockEnd = this.findBlockEnd(lines, index, filePath);
+        let startLine = index;
+        
+        // Include JSDoc if present
+        startLine = this.findJSDocStart(lines, startLine);
+
+        const content = lines.slice(startLine, blockEnd + 1).join('\n');
+        
+        matches.push({
+            file: filePath,
+            startLine: startLine + 1,
+            endLine: blockEnd + 1,
+            element: this.detectElementType(lines[index]),
+            content: content.slice(0, 5000), // Increased limit for complex tasks
+            confidence: 0.9,
+            reason: `Block at line ${lineNumber}`
+        });
+
+        return matches;
+    }
+
+    /**
      * Find code blocks by function/class/variable name
      */
     private findByName(lines: string[], name: string, filePath: string): FilePartMatch[] {
@@ -145,19 +182,20 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
             // Check for function/class/variable declarations
             if (lowerLine.includes(lowerName)) {
                 // Determine if it's a declaration
-                const isDeclaration = /(?:function|class|const|let|var|interface|type|export)\s/.test(line);
+                const isDeclaration = /(?:function|class|const|let|var|interface|type|export|def)\s/.test(line);
                 const isExact = new RegExp(`\\b${this.escapeRegex(name)}\\b`).test(line);
 
                 if (isDeclaration || isExact) {
-                    const blockEnd = this.findBlockEnd(lines, i);
-                    const content = lines.slice(i, blockEnd + 1).join('\n');
+                    const blockEnd = this.findBlockEnd(lines, i, filePath);
+                    const startLine = this.findJSDocStart(lines, i);
+                    const content = lines.slice(startLine, blockEnd + 1).join('\n');
 
                     matches.push({
                         file: filePath,
-                        startLine: i + 1,
+                        startLine: startLine + 1,
                         endLine: blockEnd + 1,
                         element: this.detectElementType(line),
-                        content: content.slice(0, 500),
+                        content: content.slice(0, 5000),
                         confidence: isExact && isDeclaration ? 0.95 : isExact ? 0.85 : 0.7,
                         reason: isDeclaration ? `Declaration of ${name}` : `Reference to ${name}`
                     });
@@ -251,7 +289,7 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
                 if (isEventHandler) {
                     // Find the containing component/element
                     const componentStart = this.findComponentStart(lines, i);
-                    const componentEnd = this.findBlockEnd(lines, componentStart);
+                    const componentEnd = this.findBlockEnd(lines, componentStart, filePath);
                     const content = lines.slice(componentStart, componentEnd + 1).join('\n');
 
                     matches.push({
@@ -259,7 +297,7 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
                         startLine: componentStart + 1,
                         endLine: componentEnd + 1,
                         element: 'event_handler',
-                        content: content.slice(0, 500),
+                        content: content.slice(0, 5000),
                         props: { handler },
                         confidence: 0.85,
                         reason: `Event handler: ${handler}`
@@ -272,17 +310,67 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
     }
 
     /**
-     * Find the end of a code block
+     * Find the end of a code block using state machine to ignore strings/comments
      */
-    private findBlockEnd(lines: string[], startLine: number): number {
+    private findBlockEnd(lines: string[], startLine: number, filePath: string = ''): number {
+        const isPython = filePath.endsWith('.py');
+        
+        if (isPython) {
+            return this.findBlockEndPython(lines, startLine);
+        }
+
         let braceCount = 0;
         let parenCount = 0;
         let started = false;
-
+        let inString: string | null = null; // ', ", `
+        let inComment = false; // block comment
+        
         for (let i = startLine; i < lines.length; i++) {
             const line = lines[i];
+            
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                const nextChar = line[j + 1];
+                
+                // Handle escaping in strings
+                if (inString && char === '\\') {
+                    j++; // skip next char
+                    continue;
+                }
 
-            for (const char of line) {
+                // Handle state transitions
+                if (inComment) {
+                    if (char === '*' && nextChar === '/') {
+                        inComment = false;
+                        j++;
+                    }
+                    continue;
+                }
+                
+                if (inString) {
+                    if (char === inString) {
+                        inString = null;
+                    }
+                    continue;
+                }
+                
+                // Check for comment start
+                if (char === '/' && nextChar === '/') {
+                    break; // Rest of line is comment
+                }
+                if (char === '/' && nextChar === '*') {
+                    inComment = true;
+                    j++;
+                    continue;
+                }
+                
+                // Check for string start
+                if (char === '"' || char === "'" || char === '`') {
+                    inString = char;
+                    continue;
+                }
+                
+                // Check for braces/parens
                 if (char === '{' || char === '(') {
                     if (char === '{') braceCount++;
                     if (char === '(') parenCount++;
@@ -291,19 +379,204 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
                     if (char === '}') braceCount--;
                     if (char === ')') parenCount--;
                 }
+                
+                // Check for semicolon (statement end)
+                if (char === ';' && braceCount === 0 && parenCount === 0 && !inString && !inComment) {
+                    return i;
+                }
             }
 
-            if (started && braceCount === 0 && parenCount <= 0) {
+            // Check if block ended
+            // We check !inString and !inComment because a block shouldn't end inside them
+            if (started && braceCount === 0 && parenCount === 0 && !inString && !inComment) {
                 return i;
             }
 
-            // Fallback: stop after 100 lines
-            if (i - startLine > 100) {
+            // Safety break - increased for large functions/classes
+            if (i - startLine > 5000) {
                 return i;
             }
         }
 
-        return Math.min(startLine + 20, lines.length - 1);
+        return Math.min(startLine + 50, lines.length - 1);
+    }
+
+    /**
+     * Find end of block for indentation-based languages (Python)
+     * Enhanced to handle multi-line expressions (parentheses/brackets)
+     */
+    private findBlockEndPython(lines: string[], startLine: number): number {
+        if (startLine >= lines.length) return startLine;
+
+        // Get base indentation of the start line
+        const startLineContent = lines[startLine];
+        const baseIndentMatch = startLineContent.match(/^(\s*)/);
+        const baseIndent = baseIndentMatch ? baseIndentMatch[1].length : 0;
+        
+        let lastValidLine = startLine;
+        let openParens = 0; // Tracks ( [ {
+        let inString: string | null = null; // Tracks string state across lines for multi-line strings
+        
+        // Helper to process a single line and update state
+        const processLine = (line: string) => {
+            let escape = false;
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (escape) {
+                    escape = false;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    escape = true;
+                    continue;
+                }
+                
+                // Handle strings
+                if (inString) {
+                    if (char === inString[0]) {
+                        if (inString.length === 1) {
+                            inString = null;
+                        } else if (inString.length === 3) {
+                            if (i + 2 < line.length && line[i+1] === char && line[i+2] === char) {
+                                inString = null;
+                                i += 2;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                
+                // Start string
+                if (char === '"' || char === "'") {
+                    // Check for triple quotes
+                    if (i + 2 < line.length && line[i+1] === char && line[i+2] === char) {
+                        inString = char + char + char;
+                        i += 2;
+                    } else {
+                        inString = char;
+                    }
+                    continue;
+                }
+                
+                // Comments (only if not in string)
+                if (char === '#') {
+                    break; // Ignore rest of line
+                }
+                
+                // Parens
+                if (char === '(' || char === '[' || char === '{') openParens++;
+                if (char === ')' || char === ']' || char === '}') openParens--;
+            }
+        };
+
+        // Process start line first
+        processLine(startLineContent);
+
+        for (let i = startLine + 1; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+
+            // Skip empty lines (they don't break the block)
+            if (trimmed === '') {
+                continue;
+            }
+
+            // Check indentation BEFORE processing the line content
+            // But only if we are NOT inside a multi-line string or open parens
+            const currentIndentMatch = line.match(/^(\s*)/);
+            const currentIndent = currentIndentMatch ? currentIndentMatch[1].length : 0;
+
+            if (openParens === 0 && inString === null) {
+                // Check if this line starts with a comment (comments at same indent or deeper are fine)
+                // But comments at lower indent might indicate end of block? 
+                // In Python, comments can be anywhere. But usually we treat them as part of block if they follow it.
+                // Let's assume comment lines are part of the block unless we hit a code line with lower indent.
+                if (trimmed.startsWith('#')) {
+                    // It's a comment line, we consume it but check next lines
+                    // If it's a comment, we don't check indent strictly, or we treat it as valid.
+                    // Actually, let's process it to be safe (it might have side effects? no, comments are ignored)
+                    processLine(line);
+                    continue;
+                }
+
+                if (currentIndent <= baseIndent) {
+                     // Check for specific keywords that extend blocks (elif, else, except, finally)
+                    const keywords = ['elif', 'else', 'except', 'finally'];
+                    const firstWord = trimmed.split(' ')[0].replace(':', '');
+                    
+                    if (keywords.includes(firstWord)) {
+                        // This is a continuation
+                        processLine(line);
+                        lastValidLine = i;
+                        continue;
+                    }
+
+                    // Otherwise, the block has ended
+                    return this.findLastContentLine(lines, startLine, i - 1);
+                }
+            }
+
+            // Process the line content to update parens/string state
+            processLine(line);
+            
+            // If the line had content (even if just inside a string/paren), it's part of the block
+            lastValidLine = i;
+            
+            // Safety break
+            if (i - startLine > 5000) {
+                return i;
+            }
+        }
+
+        return lastValidLine;
+    }
+
+    /**
+     * Find the last line that has actual content in a range
+     */
+    private findLastContentLine(lines: string[], start: number, end: number): number {
+        for (let i = end; i >= start; i--) {
+            const line = lines[i].trim();
+            if (line !== '' && !line.startsWith('#')) {
+                return i;
+            }
+        }
+        return start;
+    }
+
+    /**
+     * Find the start of JSDoc comments preceding a declaration
+     */
+    private findJSDocStart(lines: string[], declarationLine: number): number {
+        let start = declarationLine;
+        
+        // Scan backwards for comments or empty lines
+        for (let i = declarationLine - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            
+            // Stop if we hit a non-comment code line
+            // We accept //, /*, *, */ and empty lines if they are part of the block
+            if (line.startsWith('//') || 
+                line.startsWith('/*') || 
+                line.startsWith('*') || 
+                line.endsWith('*/') || 
+                line === '') {
+                
+                // Only move start up if it's not empty, OR if we have seen comments above it
+                // Actually, standard JSDoc is usually adjacent.
+                // If there is a blank line between JSDoc and function, it's sometimes considered detached,
+                // but usually we want to include it.
+                if (line !== '') {
+                    start = i;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        return start;
     }
 
     /**
@@ -313,7 +586,7 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
         for (let i = currentLine; i >= 0; i--) {
             const line = lines[i];
             // Look for JSX opening tag or component definition
-            if (/<\w+/.test(line) || /(?:function|const|class)\s+\w+/.test(line)) {
+            if (/<\w+/.test(line) || /(?:function|const|class|def)\s+\w+/.test(line)) {
                 return i;
             }
         }
@@ -332,12 +605,13 @@ export class FilePartSearcherAgent extends BaseAgent<FilePartSearchInput, FilePa
      * Detect element type from a line of code
      */
     private detectElementType(line: string): string {
-        if (/\bfunction\b/.test(line)) return 'function';
+        if (/\bfunction\b|\bdef\b/.test(line)) return 'function';
         if (/\bclass\b/.test(line)) return 'class';
         if (/\binterface\b/.test(line)) return 'interface';
         if (/\bconst\b.*=.*=>/.test(line)) return 'arrow_function';
         if (/\bconst\b|\blet\b|\bvar\b/.test(line)) return 'variable';
         if (/<\w+/.test(line)) return 'jsx_element';
+        if (/^import\b|from\b.*import\b/.test(line.trim())) return 'import';
         return 'unknown';
     }
 

@@ -51,6 +51,16 @@ export class ChatPanel implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
+        // Initialize settings in the view
+        this.handleGetSettings();
+
+        // Listen for visibility changes to ensure settings are up-to-date
+        webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible) {
+                this.handleGetSettings();
+            }
+        });
+
         // Listen for configuration changes
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('byteAI')) {
@@ -561,6 +571,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             const activeFilePath = activeEditor ? vscode.workspace.asRelativePath(activeEditor.document.uri) : undefined;
             const selectionText = activeEditor && !activeEditor.selection.isEmpty ? activeEditor.document.getText(activeEditor.selection) : undefined;
 
+            // Set context for Orchestrator (handles "that file" references)
+            this._agentOrchestrator.setContextFromMessage(message, activeFilePath);
+
             // Execute Manager Agent to decide what to do
             const decision = await this._managerAgent.execute({
                 query: message,
@@ -674,8 +687,12 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 const autoExecute = vscode.workspace.getConfiguration('byteAI').get<boolean>('autoExecute', true);
 
                 // Check if all actions are safe (file creation, modification, deletion, folders, or safe git commands)
-                const safeCommands = ['git add', 'git commit', 'git status', 'git init', 'git log'];
-                const isSafe = instructions.length <= 5 &&
+                const safeCommands = [
+                    'git add', 'git commit', 'git status', 'git init', 'git log', 'git diff',
+                    'ls', 'dir', 'cat', 'grep', 'pwd', 'echo', 'touch', 'mkdir', 'rmdir',
+                    'npm test', 'npm run build', 'npm run test', 'npm start', 'node -v', 'npm -v'
+                ];
+                const isSafe = instructions.length <= 10 &&
                     instructions.every(i =>
                         i.type === 'create_file' ||
                         i.type === 'create_folder' ||
@@ -784,6 +801,8 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             this._currentSessionId = session.id;
             this._history = session.history || [];
             this._view?.webview.postMessage({ type: 'loadSession', history: this._history });
+            // Ensure settings are synced when session is restored
+            await this.handleGetSettings();
         }
     }
 

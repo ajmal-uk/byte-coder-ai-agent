@@ -76,6 +76,27 @@ export class AgentOrchestrator {
         this.taskPlanner = new TaskPlannerAgent();
         this.searchAgent = new SearchAgent();
         this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+
+        // Load context from global state
+        this.loadContext();
+    }
+
+    /**
+     * Load persistent context
+     */
+    private loadContext() {
+        this.lastReferencedFile = this.context.globalState.get<string>('byteAI_lastReferencedFile') || null;
+        this.lastCreatedFile = this.context.globalState.get<string>('byteAI_lastCreatedFile') || null;
+        this.lastModifiedFile = this.context.globalState.get<string>('byteAI_lastModifiedFile') || null;
+    }
+
+    /**
+     * Save persistent context
+     */
+    private saveContext() {
+        this.context.globalState.update('byteAI_lastReferencedFile', this.lastReferencedFile);
+        this.context.globalState.update('byteAI_lastCreatedFile', this.lastCreatedFile);
+        this.context.globalState.update('byteAI_lastModifiedFile', this.lastModifiedFile);
     }
 
     /**
@@ -93,6 +114,7 @@ export class AgentOrchestrator {
         this.lastReferencedFile = null;
         this.lastCreatedFile = null;
         this.lastModifiedFile = null;
+        this.saveContext(); // Clear from storage too
         this.contextSearch.clear();
     }
 
@@ -110,6 +132,7 @@ export class AgentOrchestrator {
         // Track active file as potential reference
         if (activeFilePath) {
             this.lastReferencedFile = activeFilePath;
+            this.saveContext();
         }
     }
 
@@ -433,13 +456,25 @@ export class AgentOrchestrator {
             }
         }
 
-        // Pattern 13: Replace X with Y in file
-        // Matches: "replace foo with bar in utils.ts"
-        const replaceInFileRegex = /(?:replace|change|swap)\s+[`"']([^`"']+)[`"']\s+(?:with|to)\s+[`"']([^`"']+)[`"']\s+(?:in|of)\s+[`"']?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)[`"']?/gi;
+        // Pattern 13: Replace X with Y in file (or "that file")
+        // Matches: "replace foo with bar in utils.ts", "edit 6 with 11 in data.txt", "edit 6 with 11 in that file"
+        const replaceInFileRegex = /(?:replace|change|swap|edit)\s+[`"']?([^`"']{1,100})[`"']?\s+(?:with|to)\s+[`"']?([^`"']{1,100})[`"']?\s+(?:in|of)\s+(?:[`"']?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)[`"']?|(?:that|the|this)\s+file)/gi;
         while ((match = replaceInFileRegex.exec(response)) !== null) {
             const searchContent = match[1];
             const replaceContent = match[2];
-            const fileName = match[3].trim();
+            let fileName = match[3];
+
+            if (!fileName) {
+                // Matched "that file"
+                const lastFile = this.getLastReferencedFile();
+                if (lastFile) {
+                    fileName = path.basename(lastFile);
+                } else {
+                    continue;
+                }
+            } else {
+                fileName = fileName.trim();
+            }
 
             instructions.push({
                 type: 'partial_edit',
@@ -449,14 +484,42 @@ export class AgentOrchestrator {
             });
         }
 
-        // Pattern 14: Handle "that file" / "the file" references
+        // Pattern 15: Remove content from file (or "that file")
+        // Matches: "remove 5 from data.txt", "remove 5 from that file"
+        const removeContentRegex = /(?:remove|delete)\s+[`"']?([^`"']{1,100})[`"']?\s+(?:from|in)\s+(?:[`"']?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)[`"']?|(?:that|the|this)\s+file)/gi;
+        while ((match = removeContentRegex.exec(response)) !== null) {
+            const contentToRemove = match[1];
+            let fileName = match[2];
+
+            if (!fileName) {
+                const lastFile = this.getLastReferencedFile();
+                if (lastFile) {
+                    fileName = path.basename(lastFile);
+                } else {
+                    continue;
+                }
+            } else {
+                fileName = fileName.trim();
+            }
+            
+             instructions.push({
+                type: 'partial_edit',
+                path: fileName,
+                searchContent: contentToRemove,
+                replaceContent: '' // Empty string for removal
+            });
+        }
+
+        // Pattern 14: Handle "that file" / "the file" references (Full file operations)
         const thatFileRegex = /(?:edit|modify|update|delete|remove)\s+(?:that|the|this)\s+file/gi;
         if (thatFileRegex.test(response) && this.getLastReferencedFile()) {
             const lastFile = this.getLastReferencedFile()!;
             const fileName = path.basename(lastFile);
 
-            // Check if it's a delete or edit operation
-            if (/delete|remove/i.test(response)) {
+            // Check if it's a delete operation (explicit full delete)
+            // Note: Partial remove is handled by Pattern 15 above.
+            // We only want to match "delete that file" here, not "delete X from that file".
+            if (/(?:delete|remove)\s+(?:that|the|this)\s+file/i.test(response)) {
                 if (!addedPaths.has(lastFile)) {
                     instructions.push({
                         type: 'delete_file',
@@ -464,7 +527,10 @@ export class AgentOrchestrator {
                     });
                     addedPaths.add(lastFile);
                 }
-            } else {
+            } else if (!/replace|change|swap|edit\s+.*with/i.test(response)) {
+                 // Only treat as modify_file if it's NOT a partial edit pattern
+                 // (Pattern 13 handles "edit X with Y in that file")
+                 
                 // For edit, look for associated code block
                 const firstBlock = codeBlocks[0];
                 if (firstBlock && firstBlock.content && !addedPaths.has(lastFile)) {
@@ -655,6 +721,7 @@ export class AgentOrchestrator {
                         // Track this as the last modified file
                         this.lastModifiedFile = filePath;
                         this.lastReferencedFile = filePath;
+                        this.saveContext();
 
                         // Refresh the document in VS Code if it's open
                         const uri = vscode.Uri.file(filePath);

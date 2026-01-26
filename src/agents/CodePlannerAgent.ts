@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import { BaseAgent, AgentOutput, CodePlan } from '../core/AgentTypes';
 import { AnalyzedContext } from './ContextAnalyzer';
+import { ByteAIClient } from '../byteAIClient';
 
 export interface CodePlannerInput {
     query: string;
@@ -26,9 +27,16 @@ export interface CodePlannerResult extends CodePlan {
     devDependencies: string[];
     configFiles: { name: string; purpose: string }[];
     folderPurposes: { folder: string; purpose: string }[];
+    techStack?: {
+        frontend?: string;
+        backend?: string;
+        database?: string;
+    };
 }
 
 export class CodePlannerAgent extends BaseAgent<CodePlannerInput, CodePlannerResult> {
+    private client: ByteAIClient;
+
     // Common folder structures by project type
     private readonly FOLDER_TEMPLATES: Record<string, string[]> = {
         'web': [
@@ -71,6 +79,7 @@ export class CodePlannerAgent extends BaseAgent<CodePlannerInput, CodePlannerRes
 
     constructor() {
         super({ name: 'CodePlanner', timeout: 10000 });
+        this.client = new ByteAIClient();
     }
 
     async execute(input: CodePlannerInput): Promise<AgentOutput<CodePlannerResult>> {
@@ -81,10 +90,10 @@ export class CodePlannerAgent extends BaseAgent<CodePlannerInput, CodePlannerRes
             const fileStructure = this.generateFileStructure(input);
 
             // Generate interfaces
-            const interfaces = this.generateInterfaces(input);
+            const interfaces = await this.generateInterfaces(input);
 
             // Generate API endpoints (if applicable)
-            const apiEndpoints = this.generateApiEndpoints(input);
+            const apiEndpoints = await this.generateApiEndpoints(input);
 
             // Generate state flows (if applicable)
             const stateFlows = this.generateStateFlows(input);
@@ -226,11 +235,45 @@ export class CodePlannerAgent extends BaseAgent<CodePlannerInput, CodePlannerRes
     }
 
     /**
-     * Generate TypeScript interfaces
+     * Generate TypeScript interfaces using LLM with fallback
      */
-    private generateInterfaces(input: CodePlannerInput): string[] {
-        const interfaces: string[] = [];
+    private async generateInterfaces(input: CodePlannerInput): Promise<string[]> {
         const features = input.features || this.extractFeatures(input.query.toLowerCase(), input.contextKnowledge);
+        
+        // 1. Try LLM Generation
+        try {
+            const prompt = `
+You are a Senior TypeScript Architect.
+Generate a list of TypeScript interfaces for a project with these features: ${features.join(', ')}
+Query: "${input.query}"
+Project Type: ${input.projectType}
+
+Requirements:
+1. Include core data models.
+2. Include API response types.
+3. Use strict typing (no any).
+4. Output ONLY a JSON array of strings, where each string is a full interface definition.
+
+Example Output:
+[
+  "interface User { id: string; name: string; }",
+  "interface AuthResponse { token: string; user: User; }"
+]
+`;
+            const response = await this.client.generateResponse(prompt);
+            const jsonMatch = response.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (Array.isArray(parsed) && parsed.every(i => typeof i === 'string')) {
+                    return parsed;
+                }
+            }
+        } catch (e) {
+            console.warn('LLM Interface generation failed, falling back to heuristics');
+        }
+
+        // 2. Fallback to Heuristics
+        const interfaces: string[] = [];
 
         // Common base interfaces
         interfaces.push('interface ApiResponse<T> { success: boolean; data?: T; error?: string }');
@@ -260,14 +303,45 @@ export class CodePlannerAgent extends BaseAgent<CodePlannerInput, CodePlannerRes
     }
 
     /**
-     * Generate API endpoints
+     * Generate API endpoints using LLM with fallback
      */
-    private generateApiEndpoints(input: CodePlannerInput): { method: string; path: string; description: string }[] | undefined {
+    private async generateApiEndpoints(input: CodePlannerInput): Promise<{ method: string; path: string; description: string }[] | undefined> {
         if (input.projectType === 'web') return undefined;
 
-        const endpoints: { method: string; path: string; description: string }[] = [];
         const features = input.features || this.extractFeatures(input.query.toLowerCase());
 
+        // 1. Try LLM Generation
+        try {
+            const prompt = `
+You are a Senior API Designer.
+Define REST API endpoints for: ${features.join(', ')}
+Query: "${input.query}"
+
+Requirements:
+1. Follow RESTful conventions.
+2. Cover CRUD operations where appropriate.
+3. Output ONLY a JSON array of objects.
+
+Format:
+[
+  { "method": "GET", "path": "/api/resource", "description": "List resources" }
+]
+`;
+            const response = await this.client.generateResponse(prompt);
+            const jsonMatch = response.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed;
+                }
+            }
+        } catch (e) {
+            console.warn('LLM API generation failed, falling back to heuristics');
+        }
+
+        // 2. Fallback to Heuristics
+        const endpoints: { method: string; path: string; description: string }[] = [];
+        
         if (features.includes('authentication') || features.includes('users')) {
             endpoints.push(
                 { method: 'POST', path: '/api/auth/register', description: 'User registration' },
@@ -297,7 +371,7 @@ export class CodePlannerAgent extends BaseAgent<CodePlannerInput, CodePlannerRes
             );
         }
 
-        return endpoints;
+        return endpoints.length > 0 ? endpoints : undefined;
     }
 
     /**

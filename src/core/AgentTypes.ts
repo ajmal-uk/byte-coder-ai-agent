@@ -6,7 +6,7 @@
 // ===== AGENT OUTPUT TYPES =====
 
 export type AgentStatus = 'success' | 'failed' | 'partial' | 'running';
-export type IntentType = 'Build' | 'Fix' | 'Modify' | 'Explain' | 'Design' | 'Audit' | 'Expand' | 'Command';
+export type IntentType = 'Build' | 'Fix' | 'Modify' | 'Explain' | 'Design' | 'Audit' | 'Expand' | 'Command' | 'VersionControl' | 'WebSearch';
 export type QueryType = 'fix' | 'explain' | 'refactor' | 'test' | 'optimize' | 'security' | 'build' | 'design' | 'general';
 export type Complexity = 'simple' | 'medium' | 'complex';
 
@@ -90,6 +90,7 @@ export interface CodeModification {
     endLine: number;
     searchBlock: string;
     replaceBlock: string;
+    action?: 'replace' | 'insert_before' | 'insert_after' | 'delete';
     validationCommand?: string;
 }
 
@@ -246,13 +247,17 @@ export type AgentName =
     | 'Executor'
     | 'VersionController'
     | 'DocWriter'
-    | 'RelevanceScorer';
+    | 'RelevanceScorer'
+    | 'Architect'
+    | 'QualityAssurance'
+    | 'TodoManager'
+    | 'WebSearch';
 
 export const AGENT_LAYERS = {
-    SEARCH: ['IntentAnalyzer', 'FileSearch', 'FilePartSearcher', 'ContextSearch', 'Vision', 'RelevanceScorer'],
-    PLANNING: ['ProcessPlanner', 'CodePlanner', 'TaskPlanner'],
+    SEARCH: ['IntentAnalyzer', 'FileSearch', 'FilePartSearcher', 'ContextSearch', 'Vision', 'RelevanceScorer', 'WebSearch'],
+    PLANNING: ['Architect', 'ProcessPlanner', 'CodePlanner', 'TaskPlanner', 'TodoManager'],
     EXECUTION: ['FileReader', 'CommandGenerator', 'CodeModifier', 'Executor'],
-    SAFETY: ['VersionController', 'DocWriter']
+    SAFETY: ['VersionController', 'DocWriter', 'QualityAssurance']
 } as const;
 
 // ===== DECISION PROTOCOL =====

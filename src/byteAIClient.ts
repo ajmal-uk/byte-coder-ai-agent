@@ -148,6 +148,10 @@ export class ByteAIClient {
         this.disconnect();
     }
 
+    public async generateResponse(userInput: string): Promise<string> {
+        return this.streamResponse(userInput, () => {}, (err) => console.error("ByteAIClient Error:", err));
+    }
+
     public async streamResponse(
         userInput: string,
         onChunk: (chunk: string) => void,

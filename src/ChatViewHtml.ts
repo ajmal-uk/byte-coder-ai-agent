@@ -2488,6 +2488,11 @@ export class ChatViewHtml {
                     }, duration);
                 };
 
+                // Initialize settings on load
+                setTimeout(() => {
+                    vscode.postMessage({ type: 'getSettings' });
+                }, 500);
+
             </script>
         </body>
         </html>`;

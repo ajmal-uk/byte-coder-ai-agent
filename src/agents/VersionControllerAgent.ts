@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { BaseAgent, AgentOutput, Checkpoint } from '../core/AgentTypes';
 
 import * as crypto from 'crypto';
@@ -69,7 +70,7 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
                     result = await this.createCheckpoint(input.files || [], input.description, input.sessionId, input.requestId);
                     break;
                 case 'rollback':
-                    result = await this.rollback(input.checkpointId!);
+                    result = await this.rollback(input.checkpointId, input.files);
                     break;
                 case 'list_checkpoints':
                     result = this.listCheckpoints();
@@ -140,25 +141,47 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
     }
 
     /**
-     * Load all checkpoints from disk
+     * Load all checkpoints
+     * Uses index.json if available for speed, otherwise falls back to scanning
      */
     private loadAllCheckpoints(): void {
         if (!this.checkpointDir || !fs.existsSync(this.checkpointDir)) return;
 
+        // Try loading from index first
+        const indexPath = path.join(this.checkpointDir, 'index.json');
+        if (fs.existsSync(indexPath)) {
+            try {
+                const indexData = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+                for (const cp of indexData) {
+                    this.checkpoints.set(cp.checkpointId, cp);
+                }
+                return;
+            } catch (e) {
+                console.warn('Failed to load checkpoint index, falling back to scan:', e);
+            }
+        }
+
+        // Fallback: Scan directory
         try {
-            const files = fs.readdirSync(this.checkpointDir).filter(f => f.endsWith('.json'));
+            const files = fs.readdirSync(this.checkpointDir).filter(f => f.endsWith('.json') && f !== 'index.json');
+            const newIndex: Checkpoint[] = [];
+            
             for (const file of files) {
                 try {
                     const filePath = path.join(this.checkpointDir, file);
                     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                     if (data.checkpoint && data.checkpoint.checkpointId) {
                         this.checkpoints.set(data.checkpoint.checkpointId, data.checkpoint);
-                        // We don't load snapshots into memory to save resources
-                        // They will be loaded on demand during rollback
+                        newIndex.push(data.checkpoint);
                     }
                 } catch (e) {
                     console.error(`Failed to load checkpoint ${file}:`, e);
                 }
+            }
+            
+            // Rebuild index
+            if (newIndex.length > 0) {
+                this.saveIndex(newIndex);
             }
         } catch (e) {
             console.error('Failed to read checkpoint directory:', e);
@@ -169,15 +192,9 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
      * Create a new checkpoint
      */
     private async createCheckpoint(files: string[], description?: string, sessionId?: string, requestId?: string): Promise<VersionControllerResult> {
-        // REGENERATION LOGIC:
-        // If a checkpoint exists for this requestId, it means we are re-running/regenerating the same turn.
-        // In this case, we should rollback to the state BEFORE the previous run to ensure a clean slate.
         if (requestId) {
             const existing = Array.from(this.checkpoints.values()).find(cp => cp.requestId === requestId);
             if (existing) {
-                // We found a checkpoint created for this exact request ID.
-                // This implies the previous run started here.
-                // Rolling back to this checkpoint restores the state to what it was at the start of that run.
                 return this.rollback(existing.checkpointId);
             }
         }
@@ -186,24 +203,19 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         const timestamp = new Date();
         const snapshots = new Map<string, string>();
 
-        // If no specific files provided, get all open documents
         if (files.length === 0) {
             const openDocs = vscode.workspace.textDocuments.filter(d => !d.isUntitled && !d.uri.scheme.startsWith('git'));
             files = openDocs.map(d => d.uri.fsPath);
         }
 
-        // Capture file contents
         for (const filePath of files) {
             try {
                 const uri = vscode.Uri.file(filePath);
                 const document = await vscode.workspace.openTextDocument(uri);
                 snapshots.set(filePath, document.getText());
-            } catch {
-                // File doesn't exist, skip
-            }
+            } catch { }
         }
 
-        // Create checkpoint
         const checkpoint: Checkpoint = {
             checkpointId,
             timestamp,
@@ -215,18 +227,15 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
             requestId
         };
 
-        // Store checkpoint
         this.checkpoints.set(checkpointId, checkpoint);
         this.fileSnapshots.set(checkpointId, snapshots);
 
-        // Persist to disk if possible
         await this.persistCheckpoint(checkpointId, checkpoint, snapshots);
 
-        // Store in extension state
         if (this.context) {
             const storedCheckpoints = this.context.workspaceState.get<Checkpoint[]>('byteAI.checkpoints', []);
             storedCheckpoints.push(checkpoint);
-            await this.context.workspaceState.update('byteAI.checkpoints', storedCheckpoints.slice(-20));  // Keep last 20
+            await this.context.workspaceState.update('byteAI.checkpoints', storedCheckpoints.slice(-20));
         }
 
         return {
@@ -256,44 +265,93 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
     }
 
     /**
+     * Resolve a checkpoint ID from keywords or existing IDs
+     */
+    private resolveCheckpointId(checkpointId?: string): { id?: string; error?: string } {
+        const allCheckpoints = Array.from(this.checkpoints.values());
+        if (allCheckpoints.length === 0) {
+            return { error: 'No checkpoints found' };
+        }
+        
+        // Sort by timestamp descending (newest first)
+        allCheckpoints.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        let targetId = checkpointId;
+
+        if (!targetId || targetId === 'latest' || targetId === 'current') {
+            return { id: allCheckpoints[0].checkpointId };
+        } 
+        
+        if (targetId === 'previous' || targetId === 'last') {
+            if (allCheckpoints.length < 2) {
+                 return { error: 'No previous checkpoint available' };
+            }
+            return { id: allCheckpoints[1].checkpointId };
+        } 
+        
+        if (/^HEAD~(\d+)$/.test(targetId)) {
+            const match = targetId.match(/^HEAD~(\d+)$/);
+            const offset = parseInt(match![1], 10);
+            if (allCheckpoints.length <= offset) {
+                return { error: `Cannot go back ${offset} steps (only ${allCheckpoints.length} checkpoints exist)` };
+            }
+            return { id: allCheckpoints[offset].checkpointId };
+        }
+
+        // Check if ID exists
+        if (this.checkpoints.has(targetId)) {
+            return { id: targetId };
+        }
+
+        return { error: `Checkpoint ${targetId} not found` };
+    }
+
+    /**
      * Get file content from a checkpoint
      */
     private async getFileContent(checkpointId: string, filePath: string): Promise<VersionControllerResult> {
-        // Ensure snapshots are loaded
-        if (!this.fileSnapshots.has(checkpointId)) {
-            await this.loadCheckpoint(checkpointId);
+        const { id: targetId, error } = this.resolveCheckpointId(checkpointId);
+        if (error || !targetId) {
+            return { success: false, message: error || 'Checkpoint resolution failed' };
         }
 
-        const snapshots = this.fileSnapshots.get(checkpointId);
+        if (!this.fileSnapshots.has(targetId)) {
+            await this.loadCheckpoint(targetId);
+        }
+
+        const snapshots = this.fileSnapshots.get(targetId);
         if (!snapshots) {
-            return { success: false, message: `Checkpoint ${checkpointId} not found` };
+            return { success: false, message: `Checkpoint ${targetId} data not found` };
         }
 
         const content = snapshots.get(filePath);
         if (content === undefined) {
-            return { success: false, message: `File ${filePath} not found in checkpoint ${checkpointId}` };
+            return { success: false, message: `File ${filePath} not found in checkpoint ${targetId}` };
         }
 
         return {
             success: true,
             content,
-            message: `Retrieved content for ${filePath} from ${checkpointId}`
+            message: `Retrieved content for ${filePath} from ${targetId}`
         };
     }
 
     /**
      * Get diff between current workspace and a checkpoint
-     * If filePath is provided, diffs only that file. Otherwise, diffs all common files.
      */
     private async getDiff(checkpointId: string, filePath?: string): Promise<VersionControllerResult> {
-        // Ensure snapshots are loaded
-        if (!this.fileSnapshots.has(checkpointId)) {
-            await this.loadCheckpoint(checkpointId);
+        const { id: targetId, error } = this.resolveCheckpointId(checkpointId);
+        if (error || !targetId) {
+            return { success: false, message: error || 'Checkpoint resolution failed' };
         }
 
-        const snapshots = this.fileSnapshots.get(checkpointId);
+        if (!this.fileSnapshots.has(targetId)) {
+            await this.loadCheckpoint(targetId);
+        }
+
+        const snapshots = this.fileSnapshots.get(targetId);
         if (!snapshots) {
-            return { success: false, message: `Checkpoint ${checkpointId} not found` };
+            return { success: false, message: `Checkpoint ${targetId} data not found` };
         }
 
         let diffOutput = '';
@@ -304,18 +362,14 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
             if (oldContent === undefined) continue;
 
             try {
-                // Get current content
                 let newContent = '';
                 if (fs.existsSync(file)) {
                     newContent = fs.readFileSync(file, 'utf8');
                 }
 
                 if (oldContent !== newContent) {
-                    diffOutput += `--- ${file} (Checkpoint ${checkpointId})\n`;
+                    diffOutput += `--- ${file} (Checkpoint ${targetId})\n`;
                     diffOutput += `+++ ${file} (Current)\n`;
-                    // Simple line-based diff (can be replaced with a diff library if available)
-                    // For now, we just show that it changed.
-                    // Ideally, we'd generate a real patch.
                     diffOutput += this.generateSimpleDiff(oldContent, newContent) + '\n\n';
                 }
             } catch (e) {
@@ -330,7 +384,7 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         return {
             success: true,
             diff: diffOutput,
-            message: `Generated diff for checkpoint ${checkpointId}`
+            message: `Generated diff for checkpoint ${targetId}`
         };
     }
 
@@ -344,7 +398,6 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         
         while(i < oldLines.length || j < newLines.length) {
             if (i < oldLines.length && j < newLines.length && oldLines[i] === newLines[j]) {
-                // matching
                 i++; j++;
             } else {
                 if (i < oldLines.length) {
@@ -362,7 +415,6 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
 
     /**
      * Search history (checkpoints) for a query
-     * Searches in description and file contents
      */
     private async searchHistory(query: string): Promise<VersionControllerResult> {
         const lowerQuery = query.toLowerCase();
@@ -378,15 +430,23 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         }
 
         // 2. Search content (slower, but deeper)
-        // We iterate through all checkpoints on disk to find content matches
-        // This simulates "researching" previous versions
         if (this.checkpointDir && fs.existsSync(this.checkpointDir)) {
-             const files = fs.readdirSync(this.checkpointDir).filter(f => f.endsWith('.json'));
+             const files = fs.readdirSync(this.checkpointDir).filter(f => f.endsWith('.json') && f !== 'index.json');
              for (const file of files) {
                  try {
                      const filePath = path.join(this.checkpointDir, file);
-                     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                     const snapshots = data.snapshots;
+                     // Just read file - loadCheckpoint handles decompression if needed
+                     const fileContent = fs.readFileSync(filePath, 'utf8');
+                     const data = JSON.parse(fileContent);
+                     
+                     let snapshots: Record<string, string> = {};
+                     if (data.compressedSnapshots) {
+                         const buffer = Buffer.from(data.compressedSnapshots, 'base64');
+                         const decompressed = zlib.gunzipSync(buffer).toString('utf8');
+                         snapshots = JSON.parse(decompressed);
+                     } else if (data.snapshots) {
+                         snapshots = data.snapshots;
+                     }
                      
                      let contentMatch = false;
                      for (const [fPath, content] of Object.entries(snapshots)) {
@@ -397,7 +457,6 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
                      }
 
                      if (contentMatch) {
-                         // Add if not already added by metadata search
                          if (!matches.find(m => m.checkpointId === data.checkpoint.checkpointId)) {
                              matches.push(data.checkpoint);
                          }
@@ -415,33 +474,48 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
 
     /**
      * Rollback to a checkpoint
+     * @param checkpointId ID of the checkpoint to rollback to. 
+     *                     Supports 'latest', 'previous', or specific UUID.
+     *                     If undefined, defaults to 'latest'.
+     * @param filesOptional Optional list of files to restore. If empty, restores all files.
      */
-    private async rollback(checkpointId: string): Promise<VersionControllerResult> {
-        const snapshots = this.fileSnapshots.get(checkpointId);
+    private async rollback(checkpointId?: string, filesOptional?: string[]): Promise<VersionControllerResult> {
+        const { id: targetId, error } = this.resolveCheckpointId(checkpointId);
+        if (error || !targetId) {
+            return { success: false, message: error || 'Checkpoint resolution failed' };
+        }
+
+        const snapshots = this.fileSnapshots.get(targetId);
 
         if (!snapshots) {
-            // Try to load from disk
-            const loaded = await this.loadCheckpoint(checkpointId);
+            const loaded = await this.loadCheckpoint(targetId);
             if (!loaded) {
                 return {
                     success: false,
-                    message: `Checkpoint ${checkpointId} not found`
+                    message: `Checkpoint ${targetId} not found`
                 };
             }
         }
 
-        const files = this.fileSnapshots.get(checkpointId)!;
+        const filesMap = this.fileSnapshots.get(targetId)!;
         const restoredFiles: string[] = [];
+        
+        // Determine which files to restore
+        const filesToRestore = filesOptional && filesOptional.length > 0 
+            ? filesOptional 
+            : Array.from(filesMap.keys());
 
-        for (const [filePath, content] of files) {
+        for (const filePath of filesToRestore) {
+            const content = filesMap.get(filePath);
+            if (content === undefined) {
+                console.warn(`File ${filePath} not found in checkpoint ${targetId}, skipping.`);
+                continue;
+            }
+
             try {
                 const uri = vscode.Uri.file(filePath);
-
-                // Check if file exists
                 try {
                     const document = await vscode.workspace.openTextDocument(uri);
-
-                    // Replace content
                     const edit = new vscode.WorkspaceEdit();
                     edit.replace(
                         uri,
@@ -451,12 +525,10 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
                         ),
                         content
                     );
-
                     await vscode.workspace.applyEdit(edit);
                     await document.save();
                     restoredFiles.push(filePath);
                 } catch {
-                    // File was deleted, recreate it
                     const dirPath = path.dirname(filePath);
                     if (!fs.existsSync(dirPath)) {
                         fs.mkdirSync(dirPath, { recursive: true });
@@ -472,7 +544,7 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         return {
             success: restoredFiles.length > 0,
             restoredFiles,
-            message: `Restored ${restoredFiles.length} files from checkpoint ${checkpointId}`
+            message: `Restored ${restoredFiles.length} files from checkpoint ${targetId}`
         };
     }
 
@@ -496,7 +568,6 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         const existed = this.checkpoints.delete(checkpointId);
         this.fileSnapshots.delete(checkpointId);
 
-        // Remove from disk
         if (this.checkpointDir) {
             const checkpointPath = path.join(this.checkpointDir, `${checkpointId}.json`);
             try {
@@ -504,6 +575,9 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
                     fs.unlinkSync(checkpointPath);
                 }
             } catch { }
+            
+            // Update index
+            this.saveIndex(Array.from(this.checkpoints.values()));
         }
 
         return {
@@ -512,8 +586,18 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         };
     }
 
+    private saveIndex(checkpoints: Checkpoint[]): void {
+        if (!this.checkpointDir) return;
+        try {
+            const indexPath = path.join(this.checkpointDir, 'index.json');
+            fs.writeFileSync(indexPath, JSON.stringify(checkpoints, null, 2));
+        } catch (e) {
+            console.error('Failed to save checkpoint index:', e);
+        }
+    }
+
     /**
-     * Persist checkpoint to disk atomically
+     * Persist checkpoint to disk atomically with compression
      */
     private async persistCheckpoint(
         id: string,
@@ -523,10 +607,17 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
         if (!this.checkpointDir) return;
 
         try {
+            // Compress snapshots
+            const snapshotsObj = Object.fromEntries(snapshots);
+            const snapshotsJson = JSON.stringify(snapshotsObj);
+            const compressed = zlib.gzipSync(snapshotsJson).toString('base64');
+
             const data = {
                 checkpoint,
-                snapshots: Object.fromEntries(snapshots)
+                compressedSnapshots: compressed,
+                version: 2
             };
+            
             const filePath = path.join(this.checkpointDir, `${id}.json`);
             const tempPath = `${filePath}.tmp`;
 
@@ -535,14 +626,56 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
             
             // Rename to final file (atomic operation)
             fs.renameSync(tempPath, filePath);
+
+            // Update index
+            const allCheckpoints = Array.from(this.checkpoints.values());
+            this.saveIndex(allCheckpoints);
+
+            // Trigger cleanup
+            this.enforceRetentionPolicy();
+
         } catch (error) {
             console.error(`Failed to persist checkpoint ${id}:`, error);
-            // Don't fail the operation, in-memory checkpoint is still valid
         }
     }
 
     /**
-     * Load checkpoint from disk
+     * Enforce retention policy:
+     * - Keep last 20 checkpoints
+     * - Keep checkpoints from last 1 hour
+     * - Always keep checkpoints with "important" tag (future proofing)
+     */
+    private enforceRetentionPolicy(): void {
+        const MAX_COUNT = 20;
+        const MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+
+        const allCheckpoints = Array.from(this.checkpoints.values())
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        if (allCheckpoints.length <= MAX_COUNT) return;
+
+        const now = Date.now();
+        const toDelete: string[] = [];
+
+        // Keep the first MAX_COUNT
+        // For the rest, check if they are too old
+        for (let i = MAX_COUNT; i < allCheckpoints.length; i++) {
+            const cp = allCheckpoints[i];
+            const age = now - new Date(cp.timestamp).getTime();
+            
+            // If it's older than MAX_AGE, delete it
+            if (age > MAX_AGE_MS) {
+                toDelete.push(cp.checkpointId);
+            }
+        }
+
+        for (const id of toDelete) {
+            this.deleteCheckpoint(id);
+        }
+    }
+
+    /**
+     * Load checkpoint from disk (supports v1 plain and v2 compressed)
      */
     private async loadCheckpoint(id: string): Promise<boolean> {
         if (!this.checkpointDir) return false;
@@ -551,11 +684,29 @@ export class VersionControllerAgent extends BaseAgent<VersionControllerInput, Ve
             const filePath = path.join(this.checkpointDir, `${id}.json`);
             if (!fs.existsSync(filePath)) return false;
 
-            const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            const data = JSON.parse(fileContent);
+
             this.checkpoints.set(id, data.checkpoint);
-            this.fileSnapshots.set(id, new Map(Object.entries(data.snapshots)));
+
+            let snapshotsMap: Map<string, string>;
+
+            if (data.compressedSnapshots) {
+                // v2: Decompress
+                const buffer = Buffer.from(data.compressedSnapshots, 'base64');
+                const decompressed = zlib.gunzipSync(buffer).toString('utf8');
+                snapshotsMap = new Map(Object.entries(JSON.parse(decompressed)));
+            } else if (data.snapshots) {
+                // v1: Plain
+                snapshotsMap = new Map(Object.entries(data.snapshots));
+            } else {
+                return false;
+            }
+
+            this.fileSnapshots.set(id, snapshotsMap);
             return true;
-        } catch {
+        } catch (e) {
+            console.error(`Failed to load checkpoint ${id}:`, e);
             return false;
         }
     }
