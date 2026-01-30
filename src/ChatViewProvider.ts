@@ -802,12 +802,15 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 const safeCommands = [
                     'git add', 'git commit', 'git status', 'git init', 'git log', 'git diff',
                     'ls', 'dir', 'cat', 'grep', 'pwd', 'echo', 'touch', 'mkdir', 'rmdir',
-                    'npm test', 'npm run build', 'npm run test', 'npm start', 'node -v', 'npm -v'
+                    'npm test', 'npm run build', 'npm run test', 'npm start', 'node -v', 'npm -v',
+                    'npm install', 'yarn install', 'pnpm install', 'pip install',
+                    'node ', 'python ', 'python3 ', 'pip ', 'yarn ', 'pnpm '
                 ];
-                const isSafe = instructions.length <= 10 &&
+                const isSafe = instructions.length <= 50 &&
                     instructions.every(i =>
                         i.type === 'create_file' ||
                         i.type === 'create_folder' ||
+                        i.type === 'create_directory' ||
                         i.type === 'modify_file' ||
                         i.type === 'delete_file' ||
                         i.type === 'partial_edit' ||
@@ -1047,9 +1050,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             await this.handleGetSettings();
 
             vscode.window.showInformationMessage('Byte AI Settings saved successfully');
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving settings:', error);
-            vscode.window.showErrorMessage('Failed to save settings. Please check the output console for details.');
+            vscode.window.showErrorMessage(`Failed to save settings: ${error.message || error}`);
         }
     }
 

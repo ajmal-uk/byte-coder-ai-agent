@@ -274,41 +274,41 @@
                     "when": "editorHasSelection"
                 }
             ]
-        }
-    },
-    "configuration": {
-        "title": "Byte Coder AI",
-        "properties": {
-            "byteAI.customInstructions": {
-                "type": "string",
-                "default": "",
-                "description": "Custom instructions to personalize Byte AI's behavior (e.g., 'Always use Python', 'Be concise').",
-                "editPresentation": "multiline"
-            },
-            "byteAI.autoContext": {
-                "type": "boolean",
-                "default": true,
-                "description": "Automatically gather relevant context (open files, errors) when asking questions."
-            },
-            "byteAI.autoExecute": {
-                "type": "boolean",
-                "default": true,
-                "description": "Automatically create files without confirmation for simple tasks (max 3 files, no commands)."
-            },
-            "byteAI.useLocalModel": {
-                "type": "boolean",
-                "default": false,
-                "description": "Use local Ollama model instead of Cloud API."
-            },
-            "byteAI.localModelName": {
-                "type": "string",
-                "default": "llama3",
-                "description": "Name of the local Ollama model to use (e.g., llama3, mistral)."
-            },
-            "byteAI.debugSearchAgent": {
-                "type": "boolean",
-                "default": false,
-                "description": "Include a short debug summary of which files and sections SearchAgent used."
+        },
+        "configuration": {
+            "title": "Byte Coder AI",
+            "properties": {
+                "byteAI.customInstructions": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Custom instructions to personalize Byte AI's behavior (e.g., 'Always use Python', 'Be concise').",
+                    "editPresentation": "multiline"
+                },
+                "byteAI.autoContext": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically gather relevant context (open files, errors) when asking questions."
+                },
+                "byteAI.autoExecute": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically create files without confirmation for simple tasks (max 3 files, no commands)."
+                },
+                "byteAI.useLocalModel": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use local Ollama model instead of Cloud API."
+                },
+                "byteAI.localModelName": {
+                    "type": "string",
+                    "default": "llama3",
+                    "description": "Name of the local Ollama model to use (e.g., llama3, mistral)."
+                },
+                "byteAI.debugSearchAgent": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Include a short debug summary of which files and sections SearchAgent used."
+                }
             }
         }
     },

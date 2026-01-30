@@ -14,6 +14,7 @@ export interface CodeModifierInput {
     modifications: CodeModification[];
     dryRun?: boolean;
     createCheckpoint?: boolean;
+    ignoreSyntaxErrors?: boolean;
 }
 
 export interface ModificationResult {
@@ -54,7 +55,7 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
 
             // Apply modifications
             for (const mod of input.modifications) {
-                const result = await this.applyModification(mod, input.dryRun);
+                const result = await this.applyModification(mod, input.dryRun, input.ignoreSyntaxErrors);
                 results.push(result);
             }
 
@@ -89,7 +90,8 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
      */
     private async applyModification(
         mod: CodeModification,
-        dryRun: boolean = false
+        dryRun: boolean = false,
+        ignoreSyntaxErrors: boolean = false
     ): Promise<ModificationResult> {
         try {
             // Read the file
@@ -286,8 +288,7 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
                 ...replacementLines,
                 ...lines.slice(endLine + 1)
             ];
-            const finalContent = newLines.join('\n');
-
+            
             // Generate diff for display
             const diff = this.generateDiff(mod.filePath, searchBlock, mod.replaceBlock);
 
@@ -326,24 +327,26 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
             await document.save();
 
             // Verify Syntax (Self-Correction)
-            const syntaxError = await this.validateSyntax(mod.filePath);
-            if (syntaxError) {
-                // Revert changes
-                const revertEdit = new vscode.WorkspaceEdit();
-                revertEdit.replace(
-                    uri,
-                    new vscode.Range(new vscode.Position(0, 0), new vscode.Position(lines.length + 100, 0)),
-                    currentContent
-                );
-                await vscode.workspace.applyEdit(revertEdit);
-                await document.save();
+            if (!ignoreSyntaxErrors) {
+                const syntaxError = await this.validateSyntax(mod.filePath);
+                if (syntaxError) {
+                    // Revert changes
+                    const revertEdit = new vscode.WorkspaceEdit();
+                    revertEdit.replace(
+                        uri,
+                        new vscode.Range(new vscode.Position(0, 0), new vscode.Position(lines.length + 100, 0)),
+                        currentContent
+                    );
+                    await vscode.workspace.applyEdit(revertEdit);
+                    await document.save();
 
-                return {
-                    file: mod.filePath,
-                    success: false,
-                    linesModified: 0,
-                    error: `Syntax Error detected: ${syntaxError.split('\n')[0]}. Reverted changes.`
-                };
+                    return {
+                        file: mod.filePath,
+                        success: false,
+                        linesModified: 0,
+                        error: `Syntax Error detected: ${syntaxError.split('\n')[0]}. Reverted changes.`
+                    };
+                }
             }
 
             return {
@@ -458,7 +461,7 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
 
         for (let i = 0; i < lines.length; i++) {
             // Check if first line matches with similarity threshold
-            if (this.calculateSimilarity(lines[i].trim(), searchLines[0]) >= 0.85) {
+            if (this.calculateSimilarity(lines[i].trim(), searchLines[0]) >= 0.75) {
                 let currentLine = i;
                 let searchIdx = 0;
                 let match = true;
@@ -478,7 +481,7 @@ export class CodeModifierAgent extends BaseAgent<CodeModifierInput, CodeModifier
                         continue;
                     }
 
-                    if (this.calculateSimilarity(lineContent, searchLines[searchIdx]) < 0.85) {
+                    if (this.calculateSimilarity(lineContent, searchLines[searchIdx]) < 0.75) {
                         match = false;
                         break;
                     }

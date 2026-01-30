@@ -6,6 +6,7 @@
 import { BaseAgent, AgentOutput, TaskNode } from '../core/AgentTypes';
 import { ByteAIClient } from '../byteAIClient';
 import { PersonaManager } from '../core/PersonaManager';
+import { ArchitectureDesign } from './ArchitectAgent';
 
 export interface TaskPlannerInput {
     query: string;
@@ -14,6 +15,7 @@ export interface TaskPlannerInput {
     interfaces: string[];
     apiEndpoints?: { method: string; path: string; description: string }[];
     activeFilePath?: string;
+    design?: ArchitectureDesign;
 }
 
 export interface TaskPlannerResult {
@@ -90,13 +92,26 @@ export class TaskPlannerAgent extends BaseAgent<TaskPlannerInput, TaskPlannerRes
             return this.generateFallbackTask(input);
         }
     }
-
     private constructPlanningPrompt(input: TaskPlannerInput): string {
+        let designContext = '';
+        if (input.design) {
+            designContext = `
+### Architecture Design (MANDATORY TO FOLLOW):
+- **Architecture**: ${input.design.architecture}
+- **Tech Stack**: ${input.design.techStack.join(', ')}
+- **Proposed File Structure**: ${input.design.fileStructure.join(', ')}
+- **Components**: 
+${input.design.components.map(c => `  - ${c.name}: ${c.description} (Responsibilities: ${c.responsibilities.join(', ')})`).join('\n')}
+- **Data Models**: 
+${input.design.dataModels.map(d => `  - ${d.name}: ${d.fields.join(', ')}`).join('\n')}
+`;
+        }
+
         return `You are an Elite Software Architect and Project Manager.
 User Request: "${input.query}"
 Project Type: ${input.projectType}
 Existing Files: ${input.fileStructure.slice(0, 100).join(', ')}
-Current Active File: ${input.activeFilePath || 'None'}
+Current Active File: ${input.activeFilePath || 'None'}${designContext}
 
 Your goal is to create a detailed, dependency-aware execution plan to fulfill the user's request.
 You must analyze the request and break it down into atomic, executable tasks.
@@ -106,12 +121,24 @@ You must analyze the request and break it down into atomic, executable tasks.
 2. **Dependencies**: Define dependencies explicitly.
    - If Task B requires Task A's output (e.g., file creation), Task B depends on Task A.
    - If tasks are independent, they can run in parallel (leave dependencies empty).
-3. **Verification**: Every task MUST have a 'validationCommand' to verify success (e.g., 'ls file.ts', 'npm test', 'node --check file.js').
-4. **Environment**: 
+3. **Parallel Optimization**: MAXIMIZE parallelism. 
+   - Assign the same 'parallelGroup' ID to tasks that can run simultaneously (e.g., creating 5 different component files).
+   - Independent file creations should NEVER depend on each other.
+4. **Verification**: Every task MUST have a 'validationCommand' to verify success (e.g., 'ls file.ts', 'npm test', 'node --check file.js').
+5. **Environment**: 
    - Use 'pip install' for Python, 'npm install' for Node.
-   - Use 'create_file' logic by assigning to 'CodeGenerator'.
-   - Use 'run_command' logic by assigning to 'Executor'.
-5. **Completeness**: The plan must be end-to-end (Setup -> Implementation -> Verification).
+   - **CRITICAL**: For ALL file creation or modification (including new files, configs, readmes), use 'type': 'code' and assign to 'CodeGenerator'.
+   - **DESCRIPTION**: For 'code' tasks, the description MUST be detailed. 
+     - BAD: "Update file"
+     - GOOD: "Add 'calculateTotal' function to Utils class that sums the order items"
+   - **NEVER** use 'command' type for creating files (e.g. do NOT use 'touch', 'mkdir', 'echo', 'cat'). These are platform-dependent and fragile.
+   - Use 'type': 'command' ONLY for running scripts, installing dependencies, or starting servers.
+   - **Command Generation**:
+     - Assign to **'Executor'** if you know the exact command (e.g. \`npm install\`, \`ls -la\`).
+     - Assign to **'CommandGenerator'** if the command is platform-specific or requires complex construction (e.g. file operations if not using CodeGenerator, or complex system calls).
+   - For 'command' tasks, you MUST provide the specific shell command in the "command" field.
+6. **Completeness**: The plan must be end-to-end (Setup -> Implementation -> Verification).
+7. **Alignment**: Ensure all tasks align with the provided Architecture Design (if any). Create files exactly as specified in the design.
 
 ### Output Format:
 Return a JSON array of task objects. NO markdown formatting.
@@ -120,25 +147,36 @@ Return a JSON array of task objects. NO markdown formatting.
     "id": "unique_id_1",
     "description": "Clear description of what to do",
     "type": "code" | "command" | "test",
+    "command": "actual shell command (REQUIRED if type is 'command')",
     "dependencies": [], 
     "filePath": "path/to/target.ext",
     "validationCommand": "shell command",
     "parallelGroup": "optional_group_id",
-    "assignedAgent": "CodeGenerator" | "Executor" | "CodeModifier",
-    "complexity": "simple" | "medium" | "complex"
+    "assignedAgent": "CodeGenerator" | "Executor" | "CodeModifier" | "CommandGenerator" | "QualityAssurance",
+    "complexity": "simple" | "medium" | "complex",
+    "reasoning": "Brief explanation of why this task is necessary",
+    "successCriteria": ["Criterion 1", "Criterion 2"]
   }
 ]`;
     }
 
     private generateFallbackTask(input: TaskPlannerInput): TaskNode[] {
+        // Try to extract file path from query
+        const fileMatch = input.query.match(/(?:create|make|generate|add)\s+(?:a\s+|an\s+)?([a-zA-Z0-9_./-]+\.[a-z0-9]+)/i);
+        const extractedPath = fileMatch ? fileMatch[1] : undefined;
+        const filePath = extractedPath || input.activeFilePath || 'generated_code.txt';
+
         return [{
             id: 'fallback_1',
             description: input.query,
             type: 'code',
             status: 'pending',
             dependencies: [],
+            filePath: filePath,
             complexity: 'medium',
-            assignedAgent: 'CodeGenerator'
+            assignedAgent: 'CodeGenerator',
+            reasoning: 'Fallback task generated due to planning failure',
+            successCriteria: ['Code generated successfully']
         }];
     }
 
@@ -201,6 +239,7 @@ Format:
     "id": "subtask_1",
     "description": "Specific sub-task action",
     "type": "code" | "command" | "test",
+    "command": "actual shell command (REQUIRED if type is 'command')",
     "dependencies": ["subtask_id_of_dependency"], 
     "filePath": "src/path/to/file.ts",
     "validationCommand": "shell command to verify",
@@ -239,9 +278,18 @@ Rules:
 
                 // 2. Update internal dependencies using the map
                 subTasks.forEach(task => {
-                    task.dependencies = task.dependencies
-                        .map(depId => idMap.get(depId) || depId)
-                        .filter(depId => [...idMap.values()].includes(depId) || idMap.has(depId));
+                    const newDeps: string[] = [];
+                    task.dependencies.forEach(depId => {
+                        if (idMap.has(depId)) {
+                             // It's an internal dependency (a sibling subtask)
+                             newDeps.push(idMap.get(depId)!);
+                        } else {
+                             // It's an external dependency (parent's dependency or global)
+                             // Keep it as is
+                             newDeps.push(depId);
+                        }
+                    });
+                    task.dependencies = newDeps;
                 });
 
                 // 3. Handle Entry Nodes (inherit parent's dependencies)

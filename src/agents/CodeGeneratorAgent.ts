@@ -14,9 +14,11 @@ import { PersonaManager, PersonaType, Persona } from '../core/PersonaManager';
 export interface CodeGeneratorInput {
     taskPlan: TaskPlannerResult;
     codePlan: CodePlannerResult;
+    activeFilePath?: string;
     context?: {
         knowledge?: any[];
         files?: any[];
+        webSearch?: any;
     };
     persona?: PersonaType;
 }
@@ -57,6 +59,16 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
             let currentGroupId: string | undefined = undefined;
 
             for (const task of input.taskPlan.taskGraph) {
+                // Try to infer file path if missing for code tasks
+                if (!task.filePath && task.type === 'code') {
+                    const match = task.description.match(/(?:create|edit|modify|update|in|for)\s+([a-zA-Z0-9_./-]+\.[a-z0-9]+)/i);
+                    if (match) task.filePath = match[1];
+                    else if (input.activeFilePath) task.filePath = input.activeFilePath;
+                }
+
+                // Skip tasks that are clearly not for code generation (e.g., pure commands)
+                if (!task.filePath && task.type === 'command') continue;
+
                 if (task.parallelGroup && task.parallelGroup === currentGroupId) {
                     currentGroup.push(task);
                 } else {
@@ -77,7 +89,7 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
                     if (task.filePath && !task.description.includes('mkdir')) {
                         return {
                             task,
-                            result: await this.generateForTask(task, input.codePlan, input.context, (task.persona as PersonaType) || input.persona)
+                            result: await this.generateForTask(task, input.codePlan, input.context, (task.persona as PersonaType) || input.persona, input.activeFilePath)
                         };
                     }
                     return null;
@@ -119,7 +131,7 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
     /**
      * Generate content or modifications for a file using LLM with fallback to templates
      */
-    private async generateForTask(task: TaskNode, codePlan: CodePlannerResult, context?: CodeGeneratorInput['context'], forcedPersona?: PersonaType): Promise<GenResult> {
+    private async generateForTask(task: TaskNode, codePlan: CodePlannerResult, context?: CodeGeneratorInput['context'], forcedPersona?: PersonaType, activeFilePath?: string): Promise<GenResult> {
         const filePath = task.filePath!;
         const description = task.description;
         
@@ -137,12 +149,24 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
                 const wsFolder = vscode.workspace.workspaceFolders?.[0];
                 let uri: vscode.Uri;
                 
-                if (filePath.startsWith('/')) {
-                     uri = vscode.Uri.file(filePath);
-                } else if (wsFolder) {
-                    uri = vscode.Uri.joinPath(wsFolder.uri, filePath);
+                // Use context.files to resolve ambiguous paths if needed
+                if (!filePath.startsWith('/') && context?.files) {
+                    const match = context.files.find((f: any) => f.relativePath === filePath || f.relativePath.endsWith(filePath));
+                    if (match && wsFolder) {
+                        uri = vscode.Uri.joinPath(wsFolder.uri, match.relativePath);
+                    } else if (wsFolder) {
+                        uri = vscode.Uri.joinPath(wsFolder.uri, filePath);
+                    } else {
+                        uri = vscode.Uri.file(filePath);
+                    }
                 } else {
-                    uri = vscode.Uri.file(filePath); // Fallback
+                    if (filePath.startsWith('/')) {
+                        uri = vscode.Uri.file(filePath);
+                    } else if (wsFolder) {
+                        uri = vscode.Uri.joinPath(wsFolder.uri, filePath);
+                    } else {
+                        uri = vscode.Uri.file(filePath); // Fallback
+                    }
                 }
 
                 const stat = await vscode.workspace.fs.stat(uri);
@@ -150,72 +174,88 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
                     fileExists = true;
                     // Read file content
                     const doc = await vscode.workspace.openTextDocument(uri);
-                const fullContent = doc.getText();
-                
-                // Determine if we should use partial content (FilePartSearcher)
-                // We use it if file is large OR if the task specifically targets a code element (function/class)
-                const targetElement = this.detectTargetElement(description);
-                const isLargeFile = fullContent.length > 20000;
+                    const fullContent = doc.getText();
+                    
+                    // Determine if we should use partial content (FilePartSearcher)
+                    // We use it if file is large OR if the task specifically targets a code element (function/class)
+                    const targetElement = this.detectTargetElement(description);
+                    const isLargeFile = fullContent.length > 20000;
 
-                if (isLargeFile || targetElement) {
-                    // File is large or specific target, try to find relevant parts
-                    isPartial = true;
-                    
-                    // Extract keywords from description
-                    const keywords = description.split(' ')
-                        .filter(w => w.length > 4 && !['update', 'change', 'modify', 'delete', 'remove', 'create', 'write', 'function', 'class', 'method'].includes(w.toLowerCase()));
-                    
-                    if (targetElement) {
-                        // If we have a specific target type, prioritize searching for it
-                        const searchResult = await this.filePartSearcher.execute({
-                            filePath,
-                            fileContent: fullContent,
-                            searchFor: {
-                                elementType: targetElement.type,
-                                name: targetElement.name // Optional: if we extracted a name
+                    if (isLargeFile || targetElement) {
+                        // File is large or specific target, try to find relevant parts
+                        isPartial = true;
+                        
+                        // Extract keywords from description
+                        const keywords = description.split(' ')
+                            .filter(w => w.length > 4 && !['update', 'change', 'modify', 'delete', 'remove', 'create', 'write', 'function', 'class', 'method'].includes(w.toLowerCase()));
+                        
+                        if (targetElement) {
+                            // If we have a specific target type, prioritize searching for it
+                            const searchResult = await this.filePartSearcher.execute({
+                                filePath,
+                                fileContent: fullContent,
+                                searchFor: {
+                                    elementType: targetElement.type,
+                                    name: targetElement.name // Optional: if we extracted a name
+                                }
+                            });
+
+                            if (searchResult.status === 'success' && searchResult.payload && searchResult.payload.length > 0) {
+                                 // We found specific elements!
+                                 fileContent = searchResult.payload.map((m: FilePartMatch) => 
+                                    `// ... (lines ${m.startLine}-${m.endLine})\n${m.content}\n// ...`
+                                ).join('\n\n');
+                            } else {
+                                // Fallback to keyword search if element search failed
+                                fileContent = await this.keywordSearch(filePath, fullContent, keywords, targetElement.type);
                             }
-                        });
-
-                        if (searchResult.status === 'success' && searchResult.payload && searchResult.payload.length > 0) {
-                             // We found specific elements!
-                             fileContent = searchResult.payload.map((m: FilePartMatch) => 
-                                `// ... (lines ${m.startLine}-${m.endLine})\n${m.content}\n// ...`
-                            ).join('\n\n');
                         } else {
-                            // Fallback to keyword search if element search failed
-                            fileContent = await this.keywordSearch(filePath, fullContent, keywords, targetElement.type);
+                            // Just keyword search
+                            fileContent = await this.keywordSearch(filePath, fullContent, keywords);
                         }
                     } else {
-                        // Just keyword search
-                        fileContent = await this.keywordSearch(filePath, fullContent, keywords);
+                        fileContent = fullContent;
                     }
-                } else {
-                    fileContent = fullContent;
-                }
                 }
             } catch {
                 // file does not exist
             }
 
             // Construct prompt for LLM
-            const prompt = this.constructPrompt(filePath, description, codePlan, fileExists, fileContent, context, isPartial, persona);
+            let prompt = this.constructPrompt(filePath, description, codePlan, fileExists, fileContent, context, isPartial, persona, activeFilePath);
             
-            // Call LLM
-        const response = await this.client.streamResponse(
-            prompt,
-            () => {}, // We don't need to process chunks here
-            (err) => { console.warn('LLM streaming warning:', err); }
-        );
+            // Retry loop
+            let attempts = 0;
+            const maxAttempts = 2;
 
-        // Extract code from response
-        const result = this.extractResult(response, filePath, fileExists);
-        
-        if (result) {
-            return result;
-        }
-        
-        console.warn(`Could not extract code/mods for ${filePath}, falling back to template.`);
-        return { type: 'create', content: this.generateFallbackContent(filePath, description, context) };
+            while (attempts < maxAttempts) {
+                // Call LLM
+                const response = await this.client.streamResponse(
+                    prompt,
+                    () => {}, // We don't need to process chunks here
+                    (err) => { console.warn('LLM streaming warning:', err); }
+                );
+
+                // Extract code from response
+                const result = this.extractResult(response, filePath, fileExists);
+                
+                if (result) {
+                    return result;
+                }
+
+                // If extraction failed, retry with more explicit instruction
+                attempts++;
+                if (attempts < maxAttempts) {
+                    console.warn(`Attempt ${attempts} failed to extract code for ${filePath}. Retrying...`);
+                    prompt += `\n\nCRITICAL ERROR: Your previous response was not in the expected format.
+                    I could not extract the code or modifications.
+                    ${fileExists ? 'Please strictly output the JSON array inside <byte_action type="modify_file"> tags.' : 'Please strictly output the code block inside <byte_action type="create_file"> tags or a markdown code block.'}
+                    Do not add any conversational text.`;
+                }
+            }
+            
+            console.warn(`Could not extract code/mods for ${filePath} after ${maxAttempts} attempts, falling back to template.`);
+            return { type: 'create', content: this.generateFallbackContent(filePath, description, context) };
         } catch (error) {
             console.error(`Error in generateForTask for ${filePath}:`, error);
             return { type: 'create', content: this.generateFallbackContent(filePath, description, context) };
@@ -230,7 +270,8 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
         fileContent: string, 
         context?: CodeGeneratorInput['context'], 
         isPartial: boolean = false,
-        persona?: Persona
+        persona?: Persona,
+        activeFilePath?: string
     ): string {
         const fileName = filePath.split('/').pop() || 'file';
         const fileExt = filePath.split('.').pop() || '';
@@ -244,6 +285,11 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
         
         prompt += `Task: ${description}\n`;
         prompt += `Target File: \`${filePath}\`\n`;
+        
+        if (activeFilePath && activeFilePath !== filePath) {
+             prompt += `Note: The user currently has \`${activeFilePath}\` open. If the task implies a relationship with this file, consider it.\n`;
+        }
+
         prompt += `File Status: ${fileExists ? 'EXISTS (Modify it)' : 'NEW (Create it)'}\n\n`;
         
         if (fileExists && fileContent) {

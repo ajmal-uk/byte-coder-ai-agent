@@ -22,6 +22,7 @@ export interface QAReport {
     }[];
     verificationSteps: string[];
     codeQualityScore: number; // 0-100
+    suggestedFixes?: { filePath: string; modification: string }[];
 }
 
 export class QualityAssuranceAgent extends BaseAgent<QAInput, QAReport> {
@@ -65,7 +66,8 @@ Output ONLY a JSON object:
     { "severity": "critical"|"major"|"minor", "description": "What is wrong", "recommendation": "How to fix it", "location": "file:line" }
   ],
   "verificationSteps": ["Step 1", "Step 2"],
-  "codeQualityScore": number (0-100)
+  "codeQualityScore": number (0-100),
+  "suggestedFixes": [ { "filePath": "path", "modification": "description of fix" } ]
 }
 `;
 

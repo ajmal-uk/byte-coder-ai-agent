@@ -84,32 +84,47 @@ export class ExecutorAgent extends BaseAgent<ExecutorInput, ExecutorOutput> {
                         cmdResult = await this.runCommand({ ...input, command: cmd });
                     } else if (cmd.operation === 'create_file') {
                         // Handle file creation directly
-                        try {
-                             // Ensure directory exists
-                             const dir = path.dirname(cmd.target);
-                             if (!fs.existsSync(dir)) {
-                                 fs.mkdirSync(dir, { recursive: true });
-                             }
-                             fs.writeFileSync(cmd.target, cmd.content);
+                        if (!cmd.target) {
                              cmdResult = {
-                                 command: `create_file ${cmd.target}`,
-                                 exitCode: 0,
-                                 stdout: `Created file: ${cmd.target}`,
-                                 stderr: '',
-                                 success: true,
-                                 duration: 0,
-                                 recoveryOptions: []
-                             };
-                        } catch (e) {
-                             cmdResult = {
-                                 command: `create_file ${cmd.target}`,
+                                 command: `create_file`,
                                  exitCode: 1,
                                  stdout: '',
-                                 stderr: (e as Error).message,
+                                 stderr: 'Missing target file path',
                                  success: false,
                                  duration: 0,
                                  recoveryOptions: []
                              };
+                        } else {
+                            try {
+                                // Ensure directory exists
+                                const cwd = input.cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+                                const targetPath = path.isAbsolute(cmd.target) ? cmd.target : path.resolve(cwd, cmd.target);
+                                const dir = path.dirname(targetPath);
+                                
+                                if (!fs.existsSync(dir)) {
+                                    fs.mkdirSync(dir, { recursive: true });
+                                }
+                                fs.writeFileSync(targetPath, cmd.content || '');
+                                cmdResult = {
+                                    command: `create_file ${targetPath}`,
+                                    exitCode: 0,
+                                    stdout: `Created file: ${targetPath}`,
+                                    stderr: '',
+                                    success: true,
+                                    duration: 0,
+                                    recoveryOptions: []
+                                };
+                            } catch (e) {
+                                cmdResult = {
+                                    command: `create_file ${cmd.target}`,
+                                    exitCode: 1,
+                                    stdout: '',
+                                    stderr: (e as Error).message,
+                                    success: false,
+                                    duration: 0,
+                                    recoveryOptions: []
+                                };
+                            }
                         }
                     } else if (cmd.command) {
                         // CommandSpec object

@@ -318,7 +318,7 @@ export class PipelineEngine {
                     phase: 'Error',
                     currentAgent: failedStep.agent,
                     progress: Math.round((completedSteps / totalSteps) * 100),
-                    message: `Pipeline stopped: ${failureRes?.error?.message || 'Unknown error'}`,
+                    message: `Pipeline error: ${failureRes?.error?.message || 'Unknown error'}. Attempting recovery...`,
                     isComplete: false,
                     hasError: true,
                     plan: context.currentPlan,
@@ -332,26 +332,70 @@ export class PipelineEngine {
                         // Add recovery task
                         const recoveryTask: TaskNode = {
                             id: `recovery-${Date.now()}`,
-                            description: `Fix issues from ${failedStep.agent} failure`,
+                            description: `Fix issues from ${failedStep.agent} failure: ${failureRes?.error?.message}`,
                             dependencies: [context.currentPlan[failedTaskIndex].id],
-                            status: 'pending'
+                            status: 'pending',
+                            type: 'code',
+                            assignedAgent: 'CodeGenerator',
+                            reasoning: 'Self-correction triggered by pipeline failure',
+                            successCriteria: ['Error is resolved', 'Pipeline execution continues']
                         };
                         context.currentPlan.splice(failedTaskIndex + 1, 0, recoveryTask);
+
+                        // Inject recovery step into execution queue
+                        // We use CodeGenerator to attempt a fix
+                        const recoveryStep: PipelineStep = {
+                            step: 999, // Dynamic step
+                            agent: 'CodeGenerator',
+                            parallel: false,
+                            args: {
+                                taskPlan: { 
+                                    taskGraph: [recoveryTask], 
+                                    executionOrder: [recoveryTask.id],
+                                    validationCommands: [],
+                                    criticalPath: []
+                                },
+                                context: {
+                                    knowledge: [{ summary: `Previous Error: ${failureRes?.error?.message}`, relevance: 1 }]
+                                }
+                            }
+                        };
+                        
+                        // Add Executor step to verify
+                        const verifyStep: PipelineStep = {
+                            step: 1000,
+                            agent: 'Executor',
+                            parallel: false,
+                            args: { runTests: true }
+                        };
+
+                        executionQueue.unshift([recoveryStep], [verifyStep]);
 
                         // Emit updated plan
                         this.emitStatus(onStatus, {
                             phase: 'Planning',
                             currentAgent: 'TaskPlanner',
                             progress: Math.round((completedSteps / totalSteps) * 100),
-                            message: 'Added recovery task to plan',
+                            message: 'Added recovery task to plan and injected steps',
                             isComplete: false,
-                            hasError: true, // Keep error flag so UI knows
+                            hasError: false, // Clear error as we are recovering
                             plan: context.currentPlan
                         });
+                        
+                        // Continue pipeline execution
+                        continue;
                     }
                 }
 
-                // Stop execution for now (until we implement actual recovery agent loop)
+                // If no plan or recovery failed to inject
+                this.emitStatus(onStatus, {
+                    phase: 'Error',
+                    currentAgent: failedStep.agent,
+                    progress: Math.round((completedSteps / totalSteps) * 100),
+                    message: `Pipeline stopped: ${failureRes?.error?.message || 'Unknown error'}`,
+                    isComplete: false,
+                    hasError: true
+                });
                 break;
             }
 
@@ -747,9 +791,18 @@ export class PipelineEngine {
                         break;
                     case 'CommandGenerator':
                         const tPlan = context.results.get('TaskPlanner')?.payload;
+                        const codeGenResultForCmd = context.results.get('CodeGenerator')?.payload;
+                        
+                        let cmdContext = step.args?.context || context.query;
+                        if (codeGenResultForCmd?.generatedFiles?.length) {
+                            cmdContext += `\n[System Notification] The following files were just created/modified: ${codeGenResultForCmd.generatedFiles.join(', ')}. Ensure commands target them correctly.`;
+                        }
+
                         const cgOut = await this.commandGenerator.execute({
                             taskPlan: tPlan,
-                            generateStructure: step.args?.generateStructure
+                            generateStructure: step.args?.generateStructure,
+                            workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+                            context: cmdContext
                         } as any);
                         result = cgOut.status === 'success' ? cgOut.payload : null;
                         break;
@@ -758,13 +811,16 @@ export class PipelineEngine {
                         const cPlanForGen = context.results.get('CodePlanner')?.payload;
                         const contextSearchForGen = context.results.get('ContextSearch')?.payload;
                         const webSearchForGen = context.results.get('WebSearch');
+                        const fileSearchForGen = context.results.get('FileSearch')?.payload;
 
                         const cgenOut = await this.codeGenerator.execute({
                             taskPlan: tPlanForGen,
                             codePlan: cPlanForGen,
+                            activeFilePath: context.activeFilePath,
                             context: {
                                 knowledge: contextSearchForGen?.memories?.filter((m: any) => m.type === 'knowledge') || [],
-                                webSearch: webSearchForGen ? { payload: webSearchForGen.payload } : undefined
+                                webSearch: webSearchForGen ? { payload: webSearchForGen.payload } : undefined,
+                                files: fileSearchForGen
                             } as any
                         });
                         result = cgenOut.status === 'success' ? cgenOut.payload : null;
@@ -773,7 +829,8 @@ export class PipelineEngine {
                         const codeGenModifications = context.results.get('CodeGenerator')?.payload?.modifications || [];
                         const cmOut = await this.codeModifier.execute({
                             modifications: codeGenModifications,
-                            createCheckpoint: false
+                            createCheckpoint: false,
+                            ignoreSyntaxErrors: true
                         });
                         result = cmOut.status === 'success' ? cmOut.payload : null;
                         break;

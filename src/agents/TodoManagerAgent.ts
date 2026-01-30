@@ -83,7 +83,7 @@ export class TodoManagerAgent extends BaseAgent<TodoManagerInput, TodoManagerOut
                 
                 if (lastTaskResult.success) {
                     task.status = 'completed';
-                    task.output = lastTaskResult.result;
+                    (task as any).output = lastTaskResult.result;
                     reasoning = `Task '${task.description}' completed successfully.`;
                     changes.push(`Marked task ${task.id} as completed`);
                 } else {
@@ -92,7 +92,7 @@ export class TodoManagerAgent extends BaseAgent<TodoManagerInput, TodoManagerOut
                     
                     // Error Recovery Logic
                     if (lastTaskResult.result?.recoveryOptions && lastTaskResult.result.recoveryOptions.length > 0) {
-                        const currentRetry = task.retryCount || 0;
+                        const currentRetry = (task as any).retryCount || 0;
                         
                         if (currentRetry >= 3) {
                             reasoning += ` Max retries (3) reached for task ${task.id}. Halting to prevent infinite loop.`;
@@ -109,14 +109,16 @@ export class TodoManagerAgent extends BaseAgent<TodoManagerInput, TodoManagerOut
                                 description: fixDescription,
                                 status: 'pending',
                                 dependencies: task.dependencies,
-                                retryCount: 0 // New task starts with 0 retries
+                                type: 'code',
+                                complexity: 'simple',
+                                assignedAgent: 'CodeGenerator'
                             };
                             
                             updatedPlan.splice(taskIndex, 0, fixTask);
                             task.status = 'pending';
                             task.dependencies = [fixTaskId];
-                            task.retryCount = currentRetry + 1;
-                            changes.push(`Added fix task ${fixTaskId}, reset task ${task.id} (retry #${task.retryCount})`);
+                            (task as any).retryCount = currentRetry + 1;
+                            changes.push(`Added fix task ${fixTaskId}, reset task ${task.id} (retry #${(task as any).retryCount})`);
                             
                             action = 'retry';
                         }
@@ -166,14 +168,17 @@ export class TodoManagerAgent extends BaseAgent<TodoManagerInput, TodoManagerOut
                             id: fixTaskId,
                             description: fixDescription,
                             status: 'pending',
-                            dependencies: task.dependencies
+                            dependencies: task.dependencies,
+                            type: 'code',
+                            complexity: 'simple',
+                            assignedAgent: 'CodeGenerator'
                         };
                         
                         updatedPlan.splice(taskIndex, 0, fixTask);
                         task.status = 'pending';
                         task.dependencies = [fixTaskId];
-                        task.retryCount = (task.retryCount || 0) + 1;
-                        changes.push(`Added fix task ${fixTaskId}: ${fixDescription} (retry #${task.retryCount})`);
+                        (task as any).retryCount = ((task as any).retryCount || 0) + 1;
+                        changes.push(`Added fix task ${fixTaskId}: ${fixDescription} (retry #${(task as any).retryCount})`);
                         
                         action = 'retry';
                     }

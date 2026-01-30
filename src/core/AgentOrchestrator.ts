@@ -9,6 +9,7 @@ import { CodeModifierAgent } from '../agents/CodeModifierAgent';
 import { CodeGeneratorAgent } from '../agents/CodeGeneratorAgent';
 import { TaskPlannerAgent, TaskPlannerResult } from '../agents/TaskPlannerAgent';
 import { ContextSearchAgent } from '../agents/ContextSearchAgent';
+import { ArchitectAgent, ArchitectureDesign } from '../agents/ArchitectAgent';
 import { PersonaManager, PersonaType } from './PersonaManager';
 
 export interface AgenticAction {
@@ -36,6 +37,7 @@ export class AgentOrchestrator {
     private codeGenerator: CodeGeneratorAgent;
     private taskPlanner: TaskPlannerAgent;
     private contextSearch: ContextSearchAgent;
+    private architect: ArchitectAgent;
     private personaManager: PersonaManager;
     private workspaceRoot: string;
 
@@ -51,6 +53,7 @@ export class AgentOrchestrator {
         this.codeGenerator = new CodeGeneratorAgent();
         this.taskPlanner = new TaskPlannerAgent();
         this.contextSearch = new ContextSearchAgent(context);
+        this.architect = new ArchitectAgent();
         this.personaManager = new PersonaManager();
         this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
     }
@@ -70,12 +73,29 @@ export class AgentOrchestrator {
             const fileStructure = await this.getFileStructure();
             const projectType = await this.detectProjectType();
 
+            // 1.1 ARCHITECT: Design the solution
+            console.log('[AgentOrchestrator] Phase 1.1: Architectural Design...');
+            const designResult = await this.architect.execute({
+                query,
+                projectType,
+                existingFiles: fileStructure
+            });
+
+            let design: ArchitectureDesign | undefined;
+            if (designResult.status === 'success' && designResult.payload) {
+                design = designResult.payload;
+                console.log(`[AgentOrchestrator] Architecture designed: ${design.architecture}`);
+            }
+
+            // 1.2 PLAN: Generate Tasks based on Design
+            console.log('[AgentOrchestrator] Phase 1.2: Task Planning...');
             const planResult = await this.taskPlanner.execute({
                 query,
                 projectType,
                 fileStructure,
                 activeFilePath,
-                interfaces: []
+                interfaces: [],
+                design // Pass the design to the planner
             });
 
             if (planResult.status !== 'success' || !planResult.payload || planResult.payload.taskGraph.length === 0) {
@@ -83,11 +103,26 @@ export class AgentOrchestrator {
             }
 
             const tasks = planResult.payload.taskGraph;
-            console.log(`[AgentOrchestrator] Generated ${tasks.length} tasks.`);
+            const executionOrder = planResult.payload.executionOrder;
+            
+            // Sort tasks based on execution order
+            const sortedTasks = executionOrder
+                .map(id => tasks.find(t => t.id === id))
+                .filter((t): t is TaskNode => !!t);
+            
+            // Add any tasks that might have been missed in executionOrder (safety fallback)
+            const scheduledIds = new Set(sortedTasks.map(t => t.id));
+            tasks.forEach(t => {
+                if (!scheduledIds.has(t.id)) {
+                    sortedTasks.push(t);
+                }
+            });
+
+            console.log(`[AgentOrchestrator] Generated ${sortedTasks.length} tasks.`);
 
             // 2. ACT & VERIFY: Execute the plan
             console.log('[AgentOrchestrator] Phase 2: Execution & Verification...');
-            await this.executeTaskGraph(tasks, query);
+            await this.executeTaskGraph(sortedTasks, query);
 
             return "Request completed successfully.";
 
@@ -98,33 +133,60 @@ export class AgentOrchestrator {
     }
 
     /**
-     * Execute a graph of tasks, handling dependencies and verification
+     * Execute a graph of tasks with parallel processing capabilities
      */
     private async executeTaskGraph(tasks: TaskNode[], originalQuery: string): Promise<void> {
         const completedTasks = new Set<string>();
         const taskMap = new Map(tasks.map(t => [t.id, t]));
+        let remainingTasks = [...tasks];
 
-        for (const task of tasks) {
-            // Check dependencies
-            const pendingDeps = task.dependencies.filter(d => !completedTasks.has(d) && taskMap.has(d));
-            if (pendingDeps.length > 0) {
-                throw new Error(`Task ${task.id} (${task.description}) cannot start because dependencies ${pendingDeps.join(', ')} are not complete.`);
+        while (remainingTasks.length > 0) {
+            // 1. Identify all tasks ready to execute (dependencies met)
+            const executableTasks = remainingTasks.filter(task => {
+                const depsMet = task.dependencies.every(d => completedTasks.has(d));
+                return depsMet;
+            });
+
+            if (executableTasks.length === 0) {
+                const pendingIds = remainingTasks.map(t => t.id).join(', ');
+                throw new Error(`Deadlock detected or invalid dependencies. Pending tasks: ${pendingIds}`);
             }
 
-            console.log(`[AgentOrchestrator] Executing Task: ${task.description} (${task.assignedAgent})`);
+            console.log(`[AgentOrchestrator] Executing batch of ${executableTasks.length} parallel tasks...`);
 
-            try {
-                await this.executeSingleTask(task, originalQuery);
-                completedTasks.add(task.id);
-            } catch (error) {
-                // RECOVER: Try to fix the error
-                console.warn(`[AgentOrchestrator] Task failed: ${task.description}. Attempting recovery...`);
-                const recovered = await this.attemptRecovery(task, error as Error, originalQuery);
-                if (!recovered) {
-                    throw new Error(`Task ${task.id} failed and recovery was unsuccessful: ${(error as Error).message}`);
+            // 2. Execute parallel batch
+            const batchPromises = executableTasks.map(async (task) => {
+                console.log(`[AgentOrchestrator] Starting Task: ${task.description} (${task.assignedAgent})`);
+                try {
+                    await this.executeSingleTask(task, originalQuery);
+                    return { taskId: task.id, success: true };
+                } catch (error) {
+                    // Attempt recovery inside the parallel execution wrapper
+                    console.warn(`[AgentOrchestrator] Task failed: ${task.description}. Attempting recovery...`);
+                    try {
+                        const recovered = await this.attemptRecovery(task, error as Error, originalQuery);
+                        if (recovered) {
+                            return { taskId: task.id, success: true };
+                        }
+                    } catch (recError) {
+                        // Recovery failed
+                    }
+                    return { taskId: task.id, success: false, error };
                 }
-                completedTasks.add(task.id);
+            });
+
+            const results = await Promise.all(batchPromises);
+
+            // 3. Process results
+            const failedResults = results.filter(r => !r.success);
+            if (failedResults.length > 0) {
+                const errors = failedResults.map(r => r.error).join('; ');
+                throw new Error(`Batch execution failed. Errors: ${errors}`);
             }
+
+            // 4. Update state
+            results.forEach(r => completedTasks.add(r.taskId));
+            remainingTasks = remainingTasks.filter(t => !completedTasks.has(t.id));
         }
     }
 

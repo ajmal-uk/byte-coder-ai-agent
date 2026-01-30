@@ -102,6 +102,9 @@ export interface CommandSpec {
     runInTerminal?: boolean; // Indicates if command requires a visible terminal
     platform?: 'windows' | 'darwin' | 'linux' | 'all';
     description: string;
+    operation?: string; // e.g., 'create_file'
+    target?: string; // target file path
+    content?: string; // content for file creation
 }
 
 // ===== SEARCH TYPES =====
@@ -136,18 +139,18 @@ export interface ProjectPhase {
 export interface TaskNode {
     id: string;
     description: string;
-    filePath?: string;
+    type: 'code' | 'command' | 'test';
+    status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
     dependencies: string[];
-    validationCommand?: string;
-    status?: 'pending' | 'in_progress' | 'completed' | 'failed';
-    output?: any;
-    retryCount?: number;
+    filePath?: string;
     command?: string;
-    type?: 'file_edit' | 'command' | 'test' | 'other' | 'code';
+    validationCommand?: string;
     parallelGroup?: string;
     assignedAgent?: string;
-    complexity?: 'simple' | 'medium' | 'complex';
-    persona?: string; // e.g. 'BackendSpecialist', 'FrontendSpecialist'
+    complexity?: Complexity;
+    reasoning?: string; // Why this task is needed
+    successCriteria?: string[]; // What defines success for this task
+    persona?: string;
 }
 
 export interface CodePlan {

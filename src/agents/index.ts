@@ -13,6 +13,9 @@ export { FilePartSearcherAgent, FilePartSearchInput, FilePartMatch } from './Fil
 export { VisionAgent, VisionInput, VisionResult } from './VisionAgent';
 export { WebSearchAgent, WebSearchInput, WebSearchResult } from './WebSearchAgent';
 
+// ===== ENHANCED ANALYTICS LAYER =====
+export { EnhancedAnalyzerAgent, EnhancedAnalysisInput, EnhancedAnalysisResult } from './EnhancedAnalyzerAgent';
+
 // ===== PLANNING LAYER =====
 export { ProcessPlannerAgent, ProcessPlannerInput, ProcessPlannerResult } from './ProcessPlannerAgent';
 export { CodePlannerAgent, CodePlannerInput, CodePlannerResult } from './CodePlannerAgent';
@@ -23,9 +26,13 @@ export { CommandGeneratorAgent, CommandGeneratorInput, CommandGeneratorResult } 
 export { CodeModifierAgent, CodeModifierInput, CodeModifierResult } from './CodeModifierAgent';
 export { ExecutorAgent, ExecutorInput, ExecutorOutput } from './ExecutorAgent';
 
+// ===== COMPLEX TASK HANDLING LAYER =====
+export { ComplexTaskHandler, ComplexTaskInput, ComplexTaskResult, ComplexTaskDefinition, TaskPhase } from './ComplexTaskHandler';
+
 // ===== SAFETY LAYER =====
 export { VersionControllerAgent, VersionControllerInput, VersionControllerResult } from './VersionControllerAgent';
 export { DocWriterAgent, DocWriterInput, DocWriterResult } from './DocWriterAgent';
+export { QualityAssuranceAgent } from './QualityAssuranceAgent';
 
 // ===== MEMORY LAYER =====
 export { LongTermMemory, MemoryEntry, MemorySearchResult } from './LongTermMemory';

@@ -21,6 +21,7 @@ export class ChatViewHtml {
                     /* Base Colors */
                     --bg-app: var(--vscode-sideBar-background);
                     --bg-hover: var(--vscode-list-hoverBackground);
+                    --bg-card: var(--vscode-editor-background);
                     --text-primary: var(--vscode-editor-foreground);
                     --text-secondary: var(--vscode-descriptionForeground);
                     --border: var(--vscode-panel-border);
@@ -30,225 +31,230 @@ export class ChatViewHtml {
                     --input-bg: var(--vscode-input-background);
                     --input-fg: var(--vscode-input-foreground);
                     --input-border: var(--vscode-input-border);
+                    --focus-border: var(--vscode-focusBorder);
                     
-                    /* Premium Gradients & Effects */
-                    /* Logo Palette: Blue -> Cyan -> Yellow -> Orange */
-                    /* Logo Palette: Cyan -> Blue -> Gold -> Orange */
-                    --gradient-primary: linear-gradient(135deg, #00C6FF 0%, #0072FF 40%, #FFD700 70%, #FF7F00 100%);
-                    --accent: #0072FF;
-                    --gradient-overlay: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
-                    --glass-bg: rgba(30, 30, 30, 0.6);
+                    /* Modern Palette & Effects */
+                    --gradient-primary: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+                    --gradient-hover: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%);
+                    --glass-bg: rgba(var(--vscode-sideBar-background-rgb), 0.7);
                     --glass-border: rgba(255, 255, 255, 0.08);
+                    --backdrop-blur: 12px;
                     
                     /* Shadows */
-                    --shadow-sm: 0 2px 8px rgba(0,0,0,0.1);
-                    --shadow-md: 0 6px 16px rgba(0,0,0,0.15);
-                    --shadow-lg: 0 12px 32px rgba(0,0,0,0.25);
-                    --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
+                    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+                    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+                    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+                    --shadow-glow: 0 0 15px rgba(139, 92, 246, 0.3);
                     
+                    /* Spacing & Layout */
+                    --radius-sm: 6px;
+                    --radius-md: 8px;
+                    --radius-lg: 12px;
+                    --radius-xl: 16px;
+                    --spacing-xs: 4px;
+                    --spacing-sm: 8px;
+                    --spacing-md: 12px;
+                    --spacing-lg: 16px;
+                    --spacing-xl: 24px;
+
                     /* Code Blocks */
                     --code-bg: var(--vscode-editor-background);
                     --code-header-bg: var(--vscode-editorGroupHeader-tabsBackground);
                     
-                    /* Header Shadow */
-                    --header-shadow: 0 4px 20px -5px rgba(0,0,0,0.3);
+                    /* Tags */
+                    --tag-bg: rgba(139, 92, 246, 0.1);
+                    --tag-text: #8B5CF6;
+                    --tag-border: rgba(139, 92, 246, 0.2);
+
+                    /* Font Families */
+                    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                    --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
                     
-                    /* Tag Colors */
-                    --tag-file-bg: rgba(56, 189, 248, 0.15);
-                    --tag-file-bg-hover: rgba(56, 189, 248, 0.25);
-                    --tag-file-border: rgba(56, 189, 248, 0.3);
-                    --tag-file-text: #38bdf8;
-                    --tag-file-shadow: rgba(56, 189, 248, 0.2);
-                    
-                    --tag-cmd-bg: rgba(216, 180, 254, 0.15);
-                    --tag-cmd-bg-hover: rgba(216, 180, 254, 0.25);
-                    --tag-cmd-border: rgba(216, 180, 254, 0.3);
-                    --tag-cmd-text: #d8b4fe;
-                    --tag-cmd-shadow: rgba(216, 180, 254, 0.2);
-                    
-                    /* Font Fallbacks */
-                    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+                    /* Animations */
+                    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+                    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
                 }
 
-                @keyframes spin {
-                    from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                }
-                .rotating {
-                    animation: spin 1s linear infinite;
-                }
-                
-                body.vscode-light {
-                    --glass-bg: rgba(255, 255, 255, 0.85);
-                    --glass-border: rgba(0, 0, 0, 0.1);
-                    --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
-                    --shadow-md: 0 6px 16px rgba(0,0,0,0.1);
-                    --shadow-lg: 0 12px 32px rgba(0,0,0,0.15);
-                    --header-shadow: 0 4px 20px -5px rgba(0,0,0,0.1);
-                    
-                    /* Tag Colors Light */
-                    --tag-file-bg: rgba(2, 132, 199, 0.1);
-                    --tag-file-bg-hover: rgba(2, 132, 199, 0.2);
-                    --tag-file-border: rgba(2, 132, 199, 0.2);
-                    --tag-file-text: #0284c7;
-                    --tag-file-shadow: rgba(2, 132, 199, 0.15);
-                    
-                    --tag-cmd-bg: rgba(147, 51, 234, 0.1);
-                    --tag-cmd-bg-hover: rgba(147, 51, 234, 0.2);
-                    --tag-cmd-border: rgba(147, 51, 234, 0.2);
-                    --tag-cmd-text: #9333ea;
-                    --tag-cmd-shadow: rgba(147, 51, 234, 0.15);
+                /* Body & Global Reset */
+                *, *:before, *:after {
+                    box-sizing: border-box;
                 }
 
                 body {
                     margin: 0; padding: 0;
                     background: var(--bg-app);
                     color: var(--text-primary);
-                    font-family: var(--vscode-font-family, 'Inter', system-ui, sans-serif);
+                    font-family: var(--font-sans);
                     height: 100vh;
                     display: flex; flex-direction: column;
                     overflow: hidden;
+                    line-height: 1.5;
+                    -webkit-font-smoothing: antialiased;
                 }
-                
-                /* Premium Scrollbar */
+
+                /* Custom Scrollbar */
                 ::-webkit-scrollbar { width: 6px; height: 6px; }
-                ::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.2); border-radius: 3px; }
-                ::-webkit-scrollbar-thumb:hover { background: rgba(127,127,127,0.4); }
+                ::-webkit-scrollbar-thumb { 
+                    background: var(--vscode-scrollbarSlider-background); 
+                    border-radius: 3px; 
+                }
+                ::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
                 ::-webkit-scrollbar-track { background: transparent; }
+
+                /* Utility Classes */
+                .hidden { display: none !important; }
+                .flex { display: flex; }
+                .flex-col { display: flex; flex-direction: column; }
+                .items-center { align-items: center; }
+                .justify-between { justify-content: space-between; }
+                .gap-2 { gap: 0.5rem; }
+                .gap-4 { gap: 1rem; }
+
 
                 /* Glass Header */
                 header {
                     display: flex; justify-content: space-between; align-items: center;
-                    padding: 0 16px; height: 52px;
+                    padding: 0 var(--spacing-lg); height: 56px;
                     border-bottom: 1px solid var(--glass-border);
                     background: var(--glass-bg); position: sticky; top: 0; z-index: 100;
-                    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-                    box-shadow: var(--header-shadow);
+                    backdrop-filter: blur(var(--backdrop-blur)); -webkit-backdrop-filter: blur(var(--backdrop-blur));
+                    box-shadow: var(--shadow-sm);
                 }
-                
 
                 .brand {
-                    font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 10px;
-                    background: var(--gradient-primary);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
+                    font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: var(--spacing-sm);
+                    color: var(--text-primary);
                     letter-spacing: -0.01em;
                 }
                 .logo-img { 
                     width: 24px; height: 24px; object-fit: contain; 
-                    transition: transform 0.3s ease;
+                    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
                 }
-                .brand:hover .logo-img { transform: rotate(10deg) scale(1.05); }
                 
-                .header-actions { display: flex; align-items: center; gap: 6px; }
+                .header-actions { display: flex; align-items: center; gap: var(--spacing-xs); }
 
                 /* Model Selector */
                 .model-selector-container {
-                    display: flex; align-items: center; gap: 4px; margin-right: 8px;
-                    background: var(--bg-hover); padding: 2px 4px; border-radius: 6px;
-                    border: 1px solid var(--border);
+                    display: flex; align-items: center; gap: var(--spacing-xs); margin-right: var(--spacing-sm);
+                    background: var(--bg-hover); padding: 4px 8px; border-radius: var(--radius-md);
+                    border: 1px solid transparent;
+                    transition: all 0.2s ease;
                 }
+                .model-selector-container:hover {
+                    border-color: var(--accent);
+                    background: var(--bg-card);
+                }
+
                 .model-select {
-                    background: transparent; border: none; color: var(--text-primary);
-                    font-size: 11px; font-weight: 500; outline: none; cursor: pointer;
-                    max-width: 100px;
+                    appearance: none; -webkit-appearance: none;
+                    background: var(--input-bg);
+                    border: 1px solid var(--border);
+                    border-radius: var(--radius-md);
+                    color: var(--text-primary);
+                    font-size: 12px; font-weight: 500; outline: none; cursor: pointer;
+                    padding: 6px 28px 6px 10px;
+                    font-family: var(--font-sans);
+                    transition: all 0.2s;
+                    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+                    background-repeat: no-repeat;
+                    background-position: right 6px center;
+                    background-size: 14px;
+                    min-width: 120px;
                 }
-                .btn-download {
-                    display: flex; align-items: center; justify-content: center;
-                    width: 20px; height: 20px; border: none; background: transparent;
-                    color: var(--accent); cursor: pointer; border-radius: 4px;
+                .model-select:hover {
+                    border-color: var(--accent);
+                    background-color: var(--bg-hover);
                 }
-                .btn-download:hover { background: rgba(0, 114, 255, 0.1); }
+                .model-select:focus {
+                    border-color: var(--accent);
+                    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+                }
 
                 .btn-icon {
                     background: transparent; border: 1px solid transparent; color: var(--text-secondary);
-                    cursor: pointer; padding: 6px; border-radius: 8px;
+                    cursor: pointer; padding: 6px; border-radius: var(--radius-md);
                     display: flex; align-items: center; justify-content: center;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    transition: all 0.2s var(--ease-out);
+                    width: 32px; height: 32px;
                 }
                 .btn-icon:hover { 
                     background: var(--bg-hover); color: var(--text-primary); 
                     transform: translateY(-1px);
-                    box-shadow: var(--shadow-sm);
                 }
                 .btn-icon:active { transform: translateY(0); }
 
                 /* Chat Area */
                 #chat-container {
-                    flex: 1; overflow-y: auto; padding: 14px 18px;
-                    display: flex; flex-direction: column; gap: 24px;
+                    flex: 1; overflow-y: auto; padding: var(--spacing-lg) var(--spacing-xl);
+                    display: flex; flex-direction: column; gap: var(--spacing-xl);
                     scroll-behavior: smooth;
-                    mask-image: linear-gradient(to bottom, transparent, black 16px);
-                    -webkit-mask-image: linear-gradient(to bottom, transparent, black 16px);
                 }
 
                 /* Messages */
                 .message { 
-                    display: flex; gap: 8px; /* changed from column to row (implicit) */
+                    display: flex; gap: var(--spacing-md);
                     max-width: 100%; 
-                    animation: slideIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); 
+                    animation: slideIn 0.3s var(--ease-out);
+                    position: relative;
                 }
-                @keyframes slideIn { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
                 
-                .content { position: relative; font-size: 14px; line-height: 1.6; word-wrap: break-word; }
+                @keyframes slideIn { 
+                    from { opacity: 0; transform: translateY(10px); } 
+                    to { opacity: 1; transform: translateY(0); } 
+                }
                 
-                /* User Message - Row Reverse to put actions on left */
+                .content { 
+                    position: relative; font-size: 14px; line-height: 1.6; 
+                    word-wrap: break-word; font-family: var(--font-sans);
+                }
+                
+                /* Message Actions */
+                .msg-actions {
+                    display: flex;
+                    flex-direction: row;
+                    gap: var(--spacing-sm);
+                    margin-top: 4px;
+                }
+
+                /* User Message */
                 .message.user { 
                     flex-direction: row-reverse; 
-                    align-items: flex-end; 
-                    justify-content: flex-start; /* content starts from right */
                 }
                 .message.user .content {
-                    background: var(--bg-hover); color: var(--text-primary);
-                    padding: 12px 18px; border-radius: 18px;
-                    border-bottom-right-radius: 4px;
+                    background: var(--accent); color: white;
+                    padding: var(--spacing-md) var(--spacing-lg); 
+                    border-radius: var(--radius-xl);
+                    border-bottom-right-radius: 2px;
                     max-width: 85%;
+                    box-shadow: var(--shadow-md);
                 }
 
-                /* Assistant Message - Column (Text top, Actions bottom) */
+                /* Assistant Message */
                 .message.assistant { 
                     flex-direction: column; 
-                    align-items: flex-start; 
                     width: 100%; 
                 }
-                
-                /* New Action Button Styles */
-                .msg-actions {
-                    display: flex; gap: 6px;
-                    opacity: 0; transition: opacity 0.2s;
-                }
-                
-                /* User Actions: Centered vertically on side */
-                .message.user .msg-actions {
-                    align-self: center;
-                }
-
-                /* Assistant Actions: Bottom of bubble */
-                .message.assistant .msg-actions {
-                     margin-top: 6px;
-                     margin-left: 2px;
-                     position: static; transform: none;
-                }
-                 .message:hover .msg-actions { opacity: 1; }
-
-                .btn-icon.action-btn {
-                    width: 28px; height: 28px; background: transparent; 
-                    border: none; color: var(--text-secondary);
-                    box-shadow: none; /* Removed shadow/border for cleaner look */
-                }
-                .btn-icon.action-btn:hover {
-                    color: var(--text-primary);
-                    transform: scale(1.1);
-                    /* Removed background change */
-                }
-
                 .message.assistant .content {
                     background: transparent;
-                    border: none;
-                    padding: 4px 0;
-                    max-width: 100%;
                     color: var(--text-primary);
+                    padding: 0;
+                    width: 100%;
                 }
+
+                /* Code Blocks in Assistant Message */
+                .message.assistant pre {
+                    background: var(--code-bg);
+                    border: 1px solid var(--border);
+                    border-radius: var(--radius-lg);
+                    margin: var(--spacing-md) 0;
+                    overflow: hidden;
+                    box-shadow: var(--shadow-sm);
+                }
+                .message.assistant code {
+                    font-family: var(--font-mono);
+                    font-size: 13px;
+                }
+
 
                 /* Settings Page Overlay */
                 .settings-page {
@@ -468,21 +474,29 @@ export class ChatViewHtml {
 
                 /* Input Section - Floating Style */
                 .input-section {
-                    padding: 20px; background: transparent;
-                    position: relative; z-index: 20;
+                    padding: 20px; 
+                    background: transparent;
+                    position: relative; 
+                    z-index: 20;
                     margin-top: auto; /* Push to bottom by default */
                     transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    width: 100%;
+                    box-sizing: border-box;
+                    display: flex;
+                    justify-content: center;
                 }
 
                 /* New Chat State - Centered Input */
-                body.new-chat .input-section {
+                body.new-chat #input-container {
                     position: absolute;
                     top: 50%; left: 50%;
                     transform: translate(-50%, -50%);
                     width: 100%;
-                    max-width: 600px;
+                    max-width: 800px;
                     padding: 0 32px;
                     box-sizing: border-box;
+                    background: transparent;
+                    border-top: none;
                 }
                 
                 body.new-chat #chat-container {
@@ -503,7 +517,7 @@ export class ChatViewHtml {
                     transition: opacity 0.3s;
                 }
                 
-                body.new-chat .input-section::before {
+                body.new-chat #input-container::before {
                     opacity: 0; /* No background in centered mode */
                     border-top: none;
                 }
@@ -514,6 +528,10 @@ export class ChatViewHtml {
                     display: flex; flex-direction: column; gap: 8px;
                     transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
                     box-shadow: var(--shadow-md);
+                    width: 100%;
+                    max-width: 900px;
+                    margin: 0 auto;
+                    box-sizing: border-box;
                 }
                 .input-box:focus-within {
                     box-shadow: var(--shadow-lg);
@@ -521,126 +539,145 @@ export class ChatViewHtml {
                 
                 /* Highlighting */
                 .input-wrapper { position: relative; width: 100%; }
+                /* Input Area */
+                #input-container {
+                    padding: var(--spacing-lg);
+                    background: var(--bg-app);
+                    border-top: 1px solid var(--border);
+                    position: relative; z-index: 50;
+                }
+                
+                .input-wrapper {
+                    background: var(--input-bg);
+                    border: 1px solid var(--input-border);
+                    border-radius: var(--radius-lg);
+                    padding: var(--spacing-md);
+                    transition: all 0.2s var(--ease-out);
+                    display: flex; flex-direction: column; gap: var(--spacing-sm);
+                    box-shadow: var(--shadow-sm);
+                    box-sizing: border-box;
+                    width: 100%;
+                }
+                .input-wrapper:focus-within {
+                    border-color: var(--focus-border);
+                    box-shadow: 0 0 0 2px rgba(var(--vscode-focusBorder-rgb), 0.2);
+                }
+
+                .input-editor {
+                    position: relative;
+                    min-height: 24px;
+                }
+                
                 .input-highlight {
                     position: absolute; top: 0; left: 0; right: 0;
                     pointer-events: none; white-space: pre-wrap; word-wrap: break-word;
-                    font-family: inherit; font-size: 14px; line-height: 1.4;
-                    padding: 4px 0; color: transparent;
+                    font-family: inherit; font-size: 14px; line-height: 1.5;
+                    padding: 0; color: transparent;
                     max-height: 200px; overflow: hidden;
                 }
                 .input-highlight .mention {
                     color: transparent; background: rgba(0, 198, 255, 0.15);
-                    border-radius: 6px; padding: 0 6px;
+                    border-radius: 4px; padding: 0 2px;
                     border: 1px solid rgba(0, 198, 255, 0.3);
                 }
                 .input-highlight .command {
                     color: transparent; background: rgba(168, 85, 247, 0.15);
-                    border-radius: 6px; padding: 0 6px;
+                    border-radius: 4px; padding: 0 2px;
                     border: 1px solid rgba(168, 85, 247, 0.3);
                 }
                 
-                /* Scroll to Bottom Button */
-                #scrollToBottomBtn {
-                    position: fixed; bottom: 100px; right: 24px;
-                    width: 38px; height: 38px; border-radius: 50%;
-                    background: var(--accent); color: white;
-                    border: none; cursor: pointer; display: none;
-                    align-items: center; justify-content: center;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    z-index: 90; backdrop-filter: blur(8px);
-                }
-                #scrollToBottomBtn:hover { transform: translateY(-4px) scale(1.1); box-shadow: var(--shadow-glow); }
-                #scrollToBottomBtn.show { display: flex; animation: bounceIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-                @keyframes bounceIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
                 textarea {
                     position: relative; z-index: 1;
                     width: 100%; border: none; background: transparent; color: var(--input-fg);
                     font-family: inherit; font-size: 14px; resize: none; outline: none;
-                    max-height: 200px; min-height: 24px; padding: 4px 0; line-height: 1.4;
+                    max-height: 200px; min-height: 24px; padding: 0; line-height: 1.5;
                     box-sizing: border-box;
                     height: 24px;
                 }
                 
-                .input-actions { display: flex; justify-content: flex-end; align-items: center; }
+                .input-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--spacing-sm); }
                 
+                /* Action Buttons */
                 .btn-icon {
-                    background: transparent; color: var(--text-secondary); border: none;
-                    border-radius: 12px; width: 40px; height: 40px;
-                    cursor: pointer; display: flex; align-items: center; justify-content: center;
-                    transition: all 0.2s;
+                    width: 32px; height: 32px; border-radius: var(--radius-md);
                 }
-                .btn-icon:hover {
-                    background: rgba(127, 127, 127, 0.1);
-                    color: var(--text-primary);
-                }
-                .btn-icon:active { transform: scale(0.95); }
-
+                
                 .btn-send {
                     background: var(--accent); color: white; border: none;
-                    border-radius: 12px; width: 40px; height: 40px;
+                    border-radius: var(--radius-md); width: 32px; height: 32px;
                     cursor: pointer; display: flex; align-items: center; justify-content: center;
-                    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-                    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+                    transition: all 0.2s var(--ease-out);
+                    box-shadow: var(--shadow-sm);
                 }
                 .btn-send:hover { 
                     background: var(--accent-hover); 
-                    transform: scale(1.05); 
-                    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3); 
+                    transform: translateY(-1px); 
+                    box-shadow: var(--shadow-md); 
                 }
-                .btn-send:active { transform: scale(0.95); }
+                .btn-send:active { transform: translateY(0); }
                 .btn-send.disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                    background: var(--text-secondary);
-                    box-shadow: none;
-                    pointer-events: none;
+                    opacity: 0.5; cursor: not-allowed; background: var(--text-secondary);
+                    box-shadow: none; pointer-events: none; transform: none;
                 }
                 .btn-send span { display: none; }
 
                 .btn-stop {
                     background: #ef4444; color: white; border: none;
-                    border-radius: 12px; width: 40px; height: 40px;
+                    border-radius: var(--radius-md); width: 32px; height: 32px;
                     cursor: pointer; display: none; align-items: center; justify-content: center;
-                    transition: all 0.2s;
-                    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+                    transition: all 0.2s var(--ease-out);
+                    box-shadow: var(--shadow-sm);
                 }
                 .btn-stop:hover { 
-                    background: #dc2626; 
-                    transform: scale(1.05);
-                    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.3);
+                    background: #dc2626; transform: translateY(-1px);
+                    box-shadow: var(--shadow-md);
                 }
-                .btn-stop:active { transform: scale(0.95); }
+                .btn-stop:active { transform: translateY(0); }
 
-                /* Session Drawer - Full Window Overlay */
-                #session-drawer {
+                /* Scroll to Bottom Button */
+                #scrollToBottomBtn {
+                    position: fixed; bottom: 100px; right: 24px;
+                    width: 36px; height: 36px; border-radius: 50%;
+                    background: var(--bg-card); color: var(--text-primary);
+                    border: 1px solid var(--border);
+                    cursor: pointer; display: none;
+                    align-items: center; justify-content: center;
+                    box-shadow: var(--shadow-md);
+                    transition: all 0.2s var(--ease-out);
+                    z-index: 90;
+                }
+                #scrollToBottomBtn:hover { 
+                    background: var(--bg-hover); transform: translateY(-2px); 
+                    box-shadow: var(--shadow-lg); 
+                }
+                #scrollToBottomBtn.show { display: flex; animation: slideIn 0.3s var(--ease-out); }
+
+                /* Drawers */
+                .drawer {
                     position: absolute; top: 0; right: 0; bottom: 0; width: 0;
                     background: var(--bg-app); 
-                    transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-                    overflow: hidden; z-index: 100;
-                    display: flex; flex-direction: column;
-                }
-                #session-drawer.open { width: 100%; }
-
-                /* Plan Drawer */
-                #plan-drawer {
-                    position: absolute; top: 0; right: 0; bottom: 0; width: 0;
-                    background: var(--bg-app);
-                    transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    transition: width 0.3s var(--ease-in-out);
                     overflow: hidden; z-index: 100;
                     display: flex; flex-direction: column;
                     border-left: 1px solid var(--border);
                     box-shadow: -5px 0 20px rgba(0,0,0,0.1);
                 }
+                #session-drawer.open { width: 100%; }
                 #plan-drawer.open { width: 350px; }
                 @media (max-width: 600px) { #plan-drawer.open { width: 100%; } }
 
-                .plan-content { flex: 1; overflow-y: auto; padding: 16px; }
+                .drawer-header {
+                    display: flex; justify-content: space-between; align-items: center;
+                    padding: var(--spacing-md) var(--spacing-lg);
+                    border-bottom: 1px solid var(--border);
+                    background: var(--bg-card);
+                    font-weight: 600;
+                }
 
+                .plan-content { flex: 1; overflow-y: auto; padding: var(--spacing-lg); }
                 .plan-item {
-                    display: flex; align-items: flex-start; gap: 12px;
-                    padding: 12px; border-radius: 8px;
+                    display: flex; align-items: flex-start; gap: var(--spacing-md);
+                    padding: var(--spacing-md); border-radius: var(--radius-md);
                     border: 1px solid var(--border);
                     margin-bottom: 8px; background: var(--bg-app);
                     transition: all 0.2s;
@@ -1200,6 +1237,20 @@ export class ChatViewHtml {
                     animation: toastSlide 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
                     backdrop-filter: blur(12px);
                 }
+                .toast.info {
+                    border-color: rgba(59, 130, 246, 0.3);
+                    border-left-color: #3b82f6;
+                }
+                .toast.info .toast-icon { color: #3b82f6; }
+                .toast.info .toast-close:hover { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+
+                .toast.success {
+                    border-color: rgba(34, 197, 94, 0.3);
+                    border-left-color: #22c55e;
+                }
+                .toast.success .toast-icon { color: #22c55e; }
+                .toast.success .toast-close:hover { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+
                 @keyframes toastSlide { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
                 .toast-icon { color: #ef4444; flex-shrink: 0; margin-top: 2px; }
                 .toast-content { flex: 1; font-size: 13px; color: var(--text-primary); line-height: 1.4; }
@@ -1212,31 +1263,30 @@ export class ChatViewHtml {
 
                 /* Input Tags (Chips) */
                 .input-tags {
-                    display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px;
-                    margin-bottom: 8px; /* Space before input */
+                    display: flex; flex-wrap: wrap; gap: var(--spacing-sm); padding: 0 var(--spacing-xs);
+                    margin-bottom: var(--spacing-sm);
                     min-height: 0;
-                    transition: all 0.2s ease;
+                    transition: all 0.2s var(--ease-out);
                 }
-                .input-tags:not(:empty) {
-                    margin-top: 4px;
-                }
+                .input-tags:not(:empty) { margin-top: var(--spacing-xs); }
+                
                 .file-tag {
-                    display: inline-flex; align-items: center; gap: 6px;
-                    background: var(--tag-file-bg); 
-                    border: 1px solid var(--tag-file-border);
-                    color: var(--tag-file-text); 
+                    display: inline-flex; align-items: center; gap: var(--spacing-xs);
+                    background: var(--tag-bg); 
+                    border: 1px solid var(--tag-border);
+                    color: var(--tag-text); 
                     padding: 4px 8px; 
-                    border-radius: 6px;
+                    border-radius: var(--radius-sm);
                     font-size: 12px; 
                     cursor: pointer; 
                     user-select: none;
-                    transition: all 0.2s;
+                    transition: all 0.2s var(--ease-out);
                     max-width: 100%;
                 }
                 .file-tag:hover { 
-                    background: var(--tag-file-bg-hover); 
+                    background: var(--tag-border); 
                     transform: translateY(-1px);
-                    box-shadow: 0 2px 8px var(--tag-file-shadow);
+                    box-shadow: var(--shadow-sm);
                 }
                 .file-tag .tag-icon { opacity: 1; }
                 .file-tag .tag-text { 
@@ -1247,32 +1297,27 @@ export class ChatViewHtml {
                     margin-left: 2px; opacity: 0.7; padding: 2px; border-radius: 4px; display: flex;
                 }
                 .file-tag .close:hover { 
-                    opacity: 1; background: var(--tag-file-border); color: white;
+                    opacity: 1; background: rgba(0,0,0,0.1); color: inherit;
                 }
                 
                 .command-tag {
-                    background: var(--tag-cmd-bg) !important;
-                    border-color: var(--tag-cmd-border) !important;
-                    color: var(--tag-cmd-text) !important;
+                    background: rgba(168, 85, 247, 0.1) !important;
+                    border-color: rgba(168, 85, 247, 0.2) !important;
+                    color: #a855f7 !important;
                 }
                 .command-tag:hover {
-                    background: var(--tag-cmd-bg-hover) !important;
-                    filter: brightness(1.1);
-                    box-shadow: 0 2px 8px var(--tag-cmd-shadow);
-                }
-                .command-tag .close:hover {
-                    background: var(--tag-cmd-border) !important;
+                    background: rgba(168, 85, 247, 0.2) !important;
+                    box-shadow: var(--shadow-sm);
                 }
 
-                
                 /* Clickable Tags in History */
                 .message .file-tag {
                     display: inline-flex; align-items: center; gap: 4px;
-                    background: var(--tag-file-bg); 
-                    border: 1px solid var(--tag-file-border);
-                    color: var(--tag-file-text); 
+                    background: var(--tag-bg); 
+                    border: 1px solid var(--tag-border);
+                    color: var(--tag-text); 
                     padding: 2px 6px; 
-                    border-radius: 4px;
+                    border-radius: var(--radius-sm);
                     font-size: 12px; 
                     font-family: var(--font-mono);
                     cursor: pointer;
@@ -1281,9 +1326,9 @@ export class ChatViewHtml {
                     font-weight: 500;
                 }
                 .message .file-tag:hover {
-                    background: var(--tag-file-bg-hover);
-                    text-decoration: underline;
-                    box-shadow: 0 2px 8px var(--tag-file-shadow);
+                    background: var(--tag-border);
+                    text-decoration: none;
+                    box-shadow: var(--shadow-sm);
                 }
             </style>
         </head>
@@ -1293,33 +1338,28 @@ export class ChatViewHtml {
                     <img src="${logoUri}" class="logo-img" alt="Logo">
                     <span style="font-size: 10px; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; border: 1px solid var(--accent); padding: 1px 4px; border-radius: 4px; margin-left: -2px; font-weight: 800; opacity: 0.9; letter-spacing: 0.5px;">BYTE</span>
                 </div>
+                
+                <div class="model-selector-container" style="margin-left: auto; margin-right: 12px;">
+                    <select id="modelSelect" class="model-select" onchange="changeModel()">
+                        <option value="cloud" selected>Byte API</option>
+                        <optgroup label="Local Models" id="localModelGroup">
+                            <option value="local-detect">Detecting...</option>
+                        </optgroup>
+                        <option value="add-model">+ Add Model...</option>
+                    </select>
+                    <button id="downloadModelBtn" class="btn-download" onclick="downloadModel()" title="Download Model" style="display: none;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                </div>
+
                 <div class="header-actions">
-                    <div class="model-selector-container" id="agentModeContainer" style="border-color: var(--accent); background: rgba(0, 114, 255, 0.05);">
-                        <select id="agentModeSelect" class="model-select" onchange="changeAgentMode()" style="font-weight: 600; color: var(--accent);">
-                            <option value="build" selected>Build Agent</option>
-                            <option value="plan">Plan Agent</option>
-                        </select>
-                    </div>
-                    <div class="model-selector-container">
-                        <select id="modelSelect" class="model-select" onchange="changeModel()">
-                            <option value="cloud" selected>Byte API</option>
-                            <optgroup label="Local Models" id="localModelGroup">
-                                <option value="local-detect">Detecting...</option>
-                            </optgroup>
-                            <option value="add-model">+ Add Model...</option>
-                        </select>
-                        <button id="downloadModelBtn" class="btn-download" onclick="downloadModel()" title="Download Model" style="display: none;">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        </button>
-                    </div>
-                    <button class="btn-icon" onclick="exportChat()" title="Export Chat">${icons.download}</button>
                     <button class="btn-icon" onclick="newChat()" title="New Chat">${icons.plus}</button>
                     <button class="btn-icon" onclick="toggleDrawer()" title="History">${icons.history}</button>
                     <button class="btn-icon" onclick="toggleSettings()" title="Settings">${icons.settings}</button>
                 </div>
             </header>
 
-            <div id="session-drawer">
+            <div id="session-drawer" class="drawer">
                 <div class="drawer-header">
                     <div class="drawer-top-bar">
                         <span>Select a conversation</span>
@@ -1335,7 +1375,7 @@ export class ChatViewHtml {
                 </div>
             </div>
 
-            <div id="plan-drawer">
+            <div id="plan-drawer" class="drawer">
                 <div class="drawer-header">
                     <div class="drawer-top-bar">
                         <span class="drawer-title">Implementation Plan</span>
@@ -1438,7 +1478,7 @@ export class ChatViewHtml {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"></path></svg>
             </button>
             
-            <div class="input-section">
+            <div class="input-section" id="input-container">
                 <div class="command-popup" id="commandPopup">
                     <div class="command-item" onclick="selectCommand('explain')">
                         <span class="cmd-key">/explain</span> <span class="cmd-desc">Explain selected code</span>
@@ -1477,7 +1517,7 @@ export class ChatViewHtml {
                         <textarea id="messageInput" placeholder="Ask anything, @ to mention, / for command..." rows="1"></textarea>
                     </div>
                     <div class="input-actions" style="justify-content: space-between;">
-                         <div class="left-actions" style="display: flex; gap: 8px;">
+                         <div class="left-actions" style="display: flex; gap: 8px; align-items: center;">
                              <button class="btn-icon" id="attachBtn" title="Add File/Folder">
                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                              </button>
@@ -1487,6 +1527,13 @@ export class ChatViewHtml {
                                      <line x1="12" y1="19" x2="20" y2="19"></line>
                                  </svg>
                              </button>
+
+                             <div class="model-selector-container" id="agentModeContainer" style="margin-left: 4px;">
+                                <select id="agentModeSelect" class="model-select" onchange="changeAgentMode()" style="border: none; background-color: transparent; box-shadow: none; padding: 2px 20px 2px 4px; min-width: auto; width: auto; font-weight: 600; color: var(--accent); height: 28px;">
+                                    <option value="build" selected>Build Agent</option>
+                                    <option value="plan">Plan Agent</option>
+                                </select>
+                            </div>
                          </div>
                          <div class="right-actions" style="display: flex; gap: 8px; align-items: center;">
                             <button class="btn-send" id="sendBtn" title="Send">
@@ -1719,11 +1766,7 @@ export class ChatViewHtml {
                     });
                     
                     // Show feedback
-                    const toast = document.createElement('div');
-                    toast.className = 'toast';
-                    toast.innerText = \`Starting download for \${name}...\`;
-                    document.getElementById('toast-container').appendChild(toast);
-                    setTimeout(() => toast.remove(), 3000);
+                    showToast(\`Starting download for \${name}...\`, 'info');
                 }
                 
                 function downloadCustomModel() {
@@ -1820,6 +1863,8 @@ export class ChatViewHtml {
                 };
 
                 window.changeModel = () => {
+                    const modelSelect = document.getElementById('modelSelect');
+                    const downloadModelBtn = document.getElementById('downloadModelBtn');
                     const model = modelSelect.value;
                     
                     if (model === 'add-model') {
@@ -1827,7 +1872,7 @@ export class ChatViewHtml {
                         switchSettingsTab('models');
                         // Reset to cloud temporarily to avoid showing "add-model" as selected
                         modelSelect.value = 'cloud';
-                        downloadModelBtn.style.display = 'none';
+                        if (downloadModelBtn) downloadModelBtn.style.display = 'none';
                         return;
                     }
 
@@ -1837,10 +1882,10 @@ export class ChatViewHtml {
 
                     // Check if it's one of the local models (anything not 'cloud' and not 'add-model')
                     if (model !== 'cloud') {
-                        downloadModelBtn.style.display = 'flex';
+                        if (downloadModelBtn) downloadModelBtn.style.display = 'flex';
                         vscode.postMessage({ type: 'setModel', model: 'local', modelName: model });
                     } else {
-                        downloadModelBtn.style.display = 'none';
+                        if (downloadModelBtn) downloadModelBtn.style.display = 'none';
                         vscode.postMessage({ type: 'setModel', model: 'cloud' });
                     }
                 };
@@ -1855,6 +1900,9 @@ export class ChatViewHtml {
                 // Initial fetch
                 setTimeout(() => {
                     vscode.postMessage({ type: 'getLocalModels' });
+                    vscode.postMessage({ type: 'getSettings' });
+                    // Initialize agent mode UI
+                    if (window.changeAgentMode) window.changeAgentMode();
                 }, 1000);
                 
                 // State
@@ -2175,6 +2223,8 @@ export class ChatViewHtml {
                     persistState();
                 });
                 
+
+
                 // Send Message
                 function sendMessage() {
                     const text = messageInput.value.trim();
@@ -3145,16 +3195,24 @@ export class ChatViewHtml {
 
                 // Toast Helper
                 // Toast Helper (DOM optimized)
-                window.showToast = (message, duration = 5000) => {
+                window.showToast = (message, type = 'error', duration = 3000) => {
                     const container = document.getElementById('toast-container');
                     if (!container) return;
                     
                     const toast = document.createElement('div');
-                    toast.className = 'toast';
+                    toast.className = \`toast \${type}\`;
                     
+                    let iconSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>'; // Error/Alert
+                    
+                    if (type === 'success') {
+                        iconSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                    } else if (type === 'info') {
+                        iconSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+                    }
+
                     const icon = document.createElement('div');
                     icon.className = 'toast-icon';
-                    icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+                    icon.innerHTML = iconSvg;
                     
                     const content = document.createElement('div');
                     content.className = 'toast-content';

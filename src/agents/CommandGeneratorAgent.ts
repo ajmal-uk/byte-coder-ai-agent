@@ -16,6 +16,7 @@ export interface CommandGeneratorInput {
     customCommand?: string;
     safe?: boolean;
     context?: string;
+    workspaceRoot?: string;
 }
 
 export interface CommandGeneratorResult {
@@ -114,7 +115,7 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
                     commands.push(this.generateMoveCommand(input.source!, input.target!));
                     break;
                 case 'delete':
-                    const deleteResult = this.generateDeleteCommand(input.target!);
+                    const deleteResult = this.generateDeleteCommand(input.target!, input.workspaceRoot);
                     commands.push(deleteResult.command);
                     requiresConfirmation = true;
                     warningMessage = deleteResult.warning;
@@ -123,7 +124,7 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
                     commands.push(this.generateRunScriptCommand(input.target!));
                     break;
                 case 'install_deps':
-                    commands.push(this.generateInstallCommand());
+                    commands.push(this.generateInstallCommand(input.context));
                     break;
                 case 'custom':
                     // Prioritize explicit customCommand, but fall back to context inference
@@ -141,6 +142,12 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
 
             // Check for dangerous patterns in all commands
             for (const cmd of commands) {
+                // Skip check if we already processed this command and decided it's safe (e.g. via operation specific logic)
+                // Specifically for delete operations that we generated and deemed safe
+                if (cmd.operation === 'delete' && cmd.requiresConfirmation === false) {
+                    continue;
+                }
+
                 if (this.isDangerousCommand(cmd.command)) {
                     requiresConfirmation = true;
                     warningMessage = 'Command contains potentially destructive operations';
@@ -168,74 +175,70 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
      * Generate file creation commands
      */
     private generateCreateFileCommands(filePath: string, content?: string): CommandSpec[] {
-        const commands: CommandSpec[] = [];
         const dir = filePath.split('/').slice(0, -1).join('/');
+        let shellCommand = '';
+        const escapedPath = this.escapeForShell(filePath);
+        const escapedDir = dir ? this.escapeForShell(dir) : '';
 
-        // Create parent directory if needed
-        if (dir) {
-            commands.push(this.generateMkdirCommand(dir));
-        }
-
-        if (content) {
-            // Use heredoc or echo based on content complexity
-            if (content.includes('\n')) {
-                if (this.platform === 'windows') {
-                    // Windows: Use echo with append
+        // Construct shell-compatible command for fallback/script generation
+        if (this.platform === 'windows') {
+            const parts: string[] = [];
+            if (dir) parts.push(`if not exist "${escapedDir}" mkdir "${escapedDir}"`);
+            
+            if (content) {
+                if (content.includes('\n')) {
+                    parts.push(`echo.>${escapedPath}`);
                     const lines = content.split('\n');
-                    commands.push({
-                        command: `echo.>${filePath}`,
-                        args: [],
-                        platform: 'windows',
-                        description: 'Create empty file'
-                    });
+                    // Limit lines for shell command readability/length if too long? 
+                    // For now, keep it simple but be aware of command line limits.
                     for (const line of lines) {
-                        commands.push({
-                            command: `echo ${this.escapeForShell(line)}>>${filePath}`,
-                            args: [],
-                            platform: 'windows',
-                            description: 'Append line'
-                        });
+                        parts.push(`echo ${this.escapeForShell(line)}>>${escapedPath}`);
                     }
                 } else {
-                    // Unix: Use cat with heredoc
-                    commands.push({
-                        command: `cat > ${filePath} << 'EOF'\n${content}\nEOF`,
-                        args: [],
-                        platform: 'all',
-                        description: `Create file with content: ${filePath}`
-                    });
+                    parts.push(`echo ${this.escapeForShell(content)}>${escapedPath}`);
                 }
             } else {
-                commands.push({
-                    command: this.platform === 'windows'
-                        ? `echo ${this.escapeForShell(content)}>${filePath}`
-                        : `echo '${this.escapeForShell(content)}' > ${filePath}`,
-                    args: [],
-                    platform: this.platform,
-                    description: `Create file: ${filePath}`
-                });
+                parts.push(`type nul > ${escapedPath}`);
             }
+            shellCommand = parts.join(' && ');
         } else {
-            // Create empty file
-            commands.push({
-                command: this.platform === 'windows' ? `type nul > ${filePath}` : `touch ${filePath}`,
-                args: [],
-                platform: this.platform,
-                description: `Create empty file: ${filePath}`
-            });
+            // Unix
+            const parts: string[] = [];
+            if (dir) parts.push(`mkdir -p "${escapedDir}"`);
+            
+            if (content) {
+                if (content.includes('\n')) {
+                    // Use heredoc
+                    parts.push(`cat > "${escapedPath}" << 'EOF'\n${content}\nEOF`);
+                } else {
+                    parts.push(`echo '${this.escapeForShell(content)}' > "${escapedPath}"`);
+                }
+            } else {
+                parts.push(`touch "${escapedPath}"`);
+            }
+            shellCommand = parts.join(' && ');
         }
 
-        return commands;
+        return [{
+            command: shellCommand,
+            args: [],
+            platform: 'all',
+            description: `Create file: ${filePath}`,
+            operation: 'create_file',
+            target: filePath,
+            content: content || ''
+        }];
     }
 
     /**
      * Generate mkdir command
      */
     private generateMkdirCommand(dir: string): CommandSpec {
+        const escapedDir = this.escapeForShell(dir);
         return {
             command: this.platform === 'windows'
-                ? `mkdir "${dir}"`
-                : `mkdir -p "${dir}"`,
+                ? `mkdir "${escapedDir}"`
+                : `mkdir -p "${escapedDir}"`,
             args: [],
             platform: this.platform,
             description: `Create directory: ${dir}`
@@ -246,9 +249,12 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
      * Generate copy command
      */
     private generateCopyCommand(source: string, target: string): CommandSpec {
+        const escapedSource = this.escapeForShell(source);
+        const escapedTarget = this.escapeForShell(target);
+        
         const cmd = this.platform === 'windows'
-            ? `copy "${source}" "${target}"`
-            : `cp "${source}" "${target}"`;
+            ? `copy "${escapedSource}" "${escapedTarget}"`
+            : `cp "${escapedSource}" "${escapedTarget}"`;
 
         return {
             command: cmd,
@@ -262,9 +268,12 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
      * Generate move command
      */
     private generateMoveCommand(source: string, target: string): CommandSpec {
+        const escapedSource = this.escapeForShell(source);
+        const escapedTarget = this.escapeForShell(target);
+
         const cmd = this.platform === 'windows'
-            ? `move "${source}" "${target}"`
-            : `mv "${source}" "${target}"`;
+            ? `move "${escapedSource}" "${escapedTarget}"`
+            : `mv "${escapedSource}" "${escapedTarget}"`;
 
         return {
             command: cmd,
@@ -277,14 +286,31 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
     /**
      * Generate delete command with safety warning
      */
-    private generateDeleteCommand(target: string): { command: CommandSpec; warning: string } {
-        const isDirectory = !target.includes('.');
+    private generateDeleteCommand(target: string, workspaceRoot?: string): { command: CommandSpec; warning: string } {
+        // Heuristic: Trailing slash or no extension often implies directory, 
+        // but 'rm -rf' on Unix handles both safely.
+        // Windows 'rmdir /s /q' handles dirs, 'del' handles files.
+        const isDirectory = target.endsWith('/') || target.endsWith('\\') || !target.includes('.');
+        const escapedTarget = this.escapeForShell(target);
         let cmd: string;
 
         if (this.platform === 'windows') {
-            cmd = isDirectory ? `rmdir /s /q "${target}"` : `del "${target}"`;
+            // Try to handle both if uncertain? No easy one-liner in cmd without conditional.
+            // Stick to heuristic but improve it slightly.
+            cmd = isDirectory ? `rmdir /s /q "${escapedTarget}"` : `del "${escapedTarget}"`;
         } else {
-            cmd = isDirectory ? `rm -rf "${target}"` : `rm "${target}"`;
+            cmd = `rm -rf "${escapedTarget}"`;
+        }
+
+        // Determine if confirmation is needed
+        // We assume relative paths or paths in typical project directories are safe for the agent to manage
+        const isSystemPath = target.startsWith('/') || target.match(/^[a-zA-Z]:\\/);
+        
+        let isSafeProjectFile = !isSystemPath || target.includes('node_modules') || target.includes('dist') || target.includes('build') || target.includes('tmp');
+        
+        // If we have workspaceRoot, check if target is inside it
+        if (workspaceRoot && target.startsWith(workspaceRoot)) {
+            isSafeProjectFile = true;
         }
 
         return {
@@ -292,10 +318,11 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
                 command: cmd,
                 args: [],
                 platform: this.platform,
-                requiresConfirmation: true,
-                description: `Delete: ${target}`
+                requiresConfirmation: !isSafeProjectFile,
+                description: `Delete: ${target}`,
+                operation: 'delete'
             },
-            warning: `This will permanently delete ${target}. This action cannot be undone.`
+            warning: isSafeProjectFile ? '' : `This will permanently delete ${target}. This action cannot be undone.`
         };
     }
 
@@ -304,17 +331,19 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
      */
     private generateRunScriptCommand(script: string): CommandSpec {
         let cmd: string;
+        const escapedScript = this.escapeForShell(script);
 
         if (script.endsWith('.ts')) {
-            cmd = `npx ts-node ${script}`;
+            cmd = `npx ts-node "${escapedScript}"`;
         } else if (script.endsWith('.js')) {
-            cmd = `node ${script}`;
+            cmd = `node "${escapedScript}"`;
         } else if (script.endsWith('.py')) {
-            cmd = `python3 ${script}`;
+            // Use 'python' generic command, assume env is set up
+            cmd = `python "${escapedScript}"`;
         } else if (script.endsWith('.sh')) {
-            cmd = this.platform === 'windows' ? `bash ${script}` : `sh ${script}`;
+            cmd = this.platform === 'windows' ? `bash "${escapedScript}"` : `sh "${escapedScript}"`;
         } else {
-            cmd = this.platform === 'windows' ? script : `./${script}`;
+            cmd = this.platform === 'windows' ? `"${escapedScript}"` : `./"${escapedScript}"`;
         }
 
         return {
@@ -329,9 +358,23 @@ export class CommandGeneratorAgent extends BaseAgent<CommandGeneratorInput, Comm
     /**
      * Generate package install command
      */
-    private generateInstallCommand(): CommandSpec {
+    private generateInstallCommand(context?: string): CommandSpec {
+        let cmd = 'npm install';
+        
+        // Context-aware install command
+        if (context) {
+            const lowerCtx = context.toLowerCase();
+            if (lowerCtx.includes('python') || lowerCtx.includes('pip') || lowerCtx.includes('requirements.txt')) {
+                cmd = 'pip install -r requirements.txt';
+            } else if (lowerCtx.includes('yarn')) {
+                cmd = 'yarn install';
+            } else if (lowerCtx.includes('pnpm')) {
+                cmd = 'pnpm install';
+            }
+        }
+
         return {
-            command: 'npm install',
+            command: cmd,
             args: [],
             platform: 'all',
             description: 'Install dependencies'
