@@ -142,6 +142,24 @@ export class ChatViewHtml {
                 
                 .header-actions { display: flex; align-items: center; gap: 6px; }
 
+                /* Model Selector */
+                .model-selector-container {
+                    display: flex; align-items: center; gap: 4px; margin-right: 8px;
+                    background: var(--bg-hover); padding: 2px 4px; border-radius: 6px;
+                    border: 1px solid var(--border);
+                }
+                .model-select {
+                    background: transparent; border: none; color: var(--text-primary);
+                    font-size: 11px; font-weight: 500; outline: none; cursor: pointer;
+                    max-width: 100px;
+                }
+                .btn-download {
+                    display: flex; align-items: center; justify-content: center;
+                    width: 20px; height: 20px; border: none; background: transparent;
+                    color: var(--accent); cursor: pointer; border-radius: 4px;
+                }
+                .btn-download:hover { background: rgba(0, 114, 255, 0.1); }
+
                 .btn-icon {
                     background: transparent; border: 1px solid transparent; color: var(--text-secondary);
                     cursor: pointer; padding: 6px; border-radius: 8px;
@@ -232,6 +250,91 @@ export class ChatViewHtml {
                     color: var(--text-primary);
                 }
 
+                /* Settings Page Overlay */
+                .settings-page {
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: var(--bg-app); z-index: 200;
+                    display: flex; flex-direction: column;
+                    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+                }
+                .settings-page.open { transform: translateY(0); }
+                
+                .settings-header {
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 16px 24px; border-bottom: 1px solid var(--border);
+                    background: var(--bg-app);
+                }
+                .settings-title { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+                
+                .settings-body { flex: 1; display: flex; overflow: hidden; }
+                
+                .settings-sidebar {
+                    width: 200px; border-right: 1px solid var(--border);
+                    padding: 16px; display: flex; flex-direction: column; gap: 4px;
+                    background: var(--bg-app);
+                }
+                
+                .settings-nav-item {
+                    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+                    color: var(--text-secondary); font-size: 13px; font-weight: 500;
+                    display: flex; align-items: center; gap: 8px;
+                    transition: all 0.2s;
+                }
+                .settings-nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+                .settings-nav-item.active { background: var(--bg-hover); color: var(--accent); font-weight: 600; }
+                
+                .settings-content-panel { flex: 1; overflow-y: auto; padding: 24px 32px; }
+                .settings-section { display: none; animation: fadeIn 0.3s ease; }
+                .settings-section.active { display: block; }
+                
+                .section-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+                
+                /* Model Manager Styles */
+                .model-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+                .model-item {
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 12px 16px; background: var(--input-bg);
+                    border: 1px solid var(--border); border-radius: 10px;
+                    transition: all 0.2s;
+                }
+                .model-item:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+                
+                .model-info { display: flex; flex-direction: column; gap: 2px; }
+                .model-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+                .model-meta { font-size: 11px; color: var(--text-secondary); display: flex; gap: 8px; }
+                
+                .model-actions { display: flex; gap: 8px; }
+                .btn-danger {
+                    color: #ff5f56; background: rgba(255, 95, 86, 0.1);
+                    border: none; padding: 6px 10px; border-radius: 6px;
+                    cursor: pointer; font-size: 12px; font-weight: 500;
+                    transition: all 0.2s;
+                }
+                .btn-danger:hover { background: rgba(255, 95, 86, 0.2); }
+                
+                .add-model-card {
+                    background: var(--bg-hover); border-radius: 12px; padding: 16px;
+                    border: 1px dashed var(--border);
+                }
+                .model-grid {
+                    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                    gap: 12px; margin-top: 12px;
+                }
+                .model-option-card {
+                    background: var(--input-bg); border: 1px solid var(--border);
+                    border-radius: 8px; padding: 12px; cursor: pointer;
+                    display: flex; flex-direction: column; gap: 4px;
+                    transition: all 0.2s;
+                }
+                .model-option-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+                .model-option-name { font-weight: 600; font-size: 13px; }
+                .model-option-size { font-size: 11px; color: var(--text-secondary); }
+                
+                /* Settings Form */
+                .form-group { margin-bottom: 20px; }
+                .form-label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 13px; }
+                .form-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.4; }
+                
                 /* ... existing styles ... */
 
                 .btn-send {
@@ -767,27 +870,272 @@ export class ChatViewHtml {
                 .icon-html { color: #e34c26; }
                 .icon-py { color: #3572A5; }
 
-                /* Settings Drawer */
-                #settings-drawer {
-                    position: absolute; top: 0; right: 0; bottom: 0; width: 0;
+                /* Settings Page - Full Screen Overlay */
+                #settings-page {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
                     background: var(--bg-app);
-                    transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-                    overflow: hidden; z-index: 100;
-                    display: flex; flex-direction: column;
+                    z-index: 200;
+                    display: flex;
+                    flex-direction: column;
+                    transform: translateY(100%);
+                    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
                 }
-                #settings-drawer.open { width: 100%; }
+                #settings-page.open {
+                    transform: translateY(0);
+                }
 
-                .settings-content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
-                
-                .setting-group { display: flex; flex-direction: column; gap: 8px; }
-                .setting-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-                .setting-icon { opacity: 0.7; display: flex; align-items: center; }
-                .setting-info { flex: 1; }
-                .setting-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
-                .setting-desc { font-size: 12px; color: var(--text-secondary); opacity: 0.8; line-height: 1.4; }
-                .settings-divider { height: 1px; background: var(--border); margin: 4px 0; }
-                .drawer-title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-                
+                .settings-header {
+                    height: 50px;
+                    border-bottom: 1px solid var(--border);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 0 16px;
+                    background: var(--bg-app);
+                }
+                .settings-title {
+                    font-weight: 600;
+                    font-size: 14px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .settings-body {
+                    flex: 1;
+                    display: flex;
+                    overflow: hidden;
+                }
+
+                .settings-sidebar {
+                    width: 200px;
+                    border-right: 1px solid var(--border);
+                    background: rgba(0,0,0,0.02);
+                    padding: 16px 0;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .settings-nav-item {
+                    padding: 8px 16px;
+                    cursor: pointer;
+                    font-size: 13px;
+                    color: var(--text-secondary);
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    transition: all 0.2s;
+                    border-left: 3px solid transparent;
+                }
+                .settings-nav-item:hover {
+                    background: rgba(0,0,0,0.04);
+                    color: var(--text-primary);
+                }
+                .settings-nav-item.active {
+                    background: rgba(0, 114, 255, 0.08);
+                    color: var(--accent);
+                    border-left-color: var(--accent);
+                    font-weight: 500;
+                }
+
+                .settings-content-panel {
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 24px 32px;
+                }
+
+                .settings-section {
+                    display: none;
+                    animation: fadeIn 0.3s ease;
+                }
+                .settings-section.active {
+                    display: block;
+                }
+
+                .section-title {
+                    font-size: 16px;
+                    font-weight: 600;
+                    margin-bottom: 20px;
+                    color: var(--text-primary);
+                    padding-bottom: 8px;
+                    border-bottom: 1px solid var(--border);
+                }
+
+                .form-group {
+                    margin-bottom: 20px;
+                }
+                .form-label {
+                    display: block;
+                    font-size: 13px;
+                    font-weight: 500;
+                    margin-bottom: 6px;
+                    color: var(--text-primary);
+                }
+                .form-desc {
+                    font-size: 12px;
+                    color: var(--text-secondary);
+                    margin-bottom: 8px;
+                    line-height: 1.4;
+                }
+
+                .setting-input {
+                    width: 100%;
+                    background: var(--input-bg);
+                    border: 1px solid var(--border);
+                    color: var(--text-primary);
+                    padding: 10px;
+                    border-radius: 6px;
+                    font-family: inherit;
+                    font-size: 13px;
+                    outline: none;
+                    transition: border-color 0.2s;
+                }
+                .setting-input:focus {
+                    border-color: var(--accent);
+                }
+
+                .setting-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                }
+
+                /* Toggle Switch */
+                .switch {
+                    position: relative;
+                    display: inline-block;
+                    width: 36px;
+                    height: 20px;
+                }
+                .switch input { opacity: 0; width: 0; height: 0; }
+                .slider {
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-color: var(--border);
+                    transition: .4s;
+                    border-radius: 20px;
+                }
+                .slider:before {
+                    position: absolute;
+                    content: "";
+                    height: 16px;
+                    width: 16px;
+                    left: 2px;
+                    bottom: 2px;
+                    background-color: white;
+                    transition: .4s;
+                    border-radius: 50%;
+                }
+                input:checked + .slider { background-color: var(--accent); }
+                input:checked + .slider:before { transform: translateX(16px); }
+
+                /* Model Cards */
+                .model-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    margin-bottom: 24px;
+                }
+                .model-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px;
+                    background: var(--bg-card);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                }
+
+                .add-model-card {
+                    background: var(--bg-card);
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    padding: 20px;
+                }
+                .model-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                    gap: 12px;
+                }
+                .model-card {
+                    background: var(--bg-app);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                    padding: 12px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    gap: 10px;
+                    transition: all 0.2s;
+                }
+                .model-card:hover {
+                    border-color: var(--accent);
+                    transform: translateY(-2px);
+                    box-shadow: var(--shadow-sm);
+                }
+                .model-info { flex: 1; }
+                .model-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+                .model-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.3; }
+
+                /* Shortcuts */
+                .shortcuts-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                    gap: 12px;
+                }
+                .shortcut-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px;
+                    background: var(--bg-card);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                }
+                .shortcut-key {
+                    font-family: var(--font-mono);
+                    font-size: 11px;
+                    background: var(--bg-app);
+                    border: 1px solid var(--border);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    color: var(--text-primary);
+                }
+                .shortcut-action { font-size: 13px; color: var(--text-secondary); }
+
+                .btn-save {
+                    background: var(--accent);
+                    color: white;
+                    border: none;
+                    padding: 8px 20px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: 500;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 13px;
+                    width: 100%;
+                    justify-content: center;
+                    transition: background 0.2s;
+                }
+                .btn-save:hover { background: var(--accent-hover); }
+
+                .btn-download-sm {
+                    background: var(--accent);
+                    color: white;
+                    border: none;
+                    width: 24px; height: 24px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    align-self: flex-end;
+                }
+
                 .setting-input {
                     background: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);
                     padding: 12px; border-radius: 8px; font-family: inherit; font-size: 13px; resize: vertical;
@@ -946,6 +1294,24 @@ export class ChatViewHtml {
                     <span style="font-size: 10px; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; border: 1px solid var(--accent); padding: 1px 4px; border-radius: 4px; margin-left: -2px; font-weight: 800; opacity: 0.9; letter-spacing: 0.5px;">BYTE</span>
                 </div>
                 <div class="header-actions">
+                    <div class="model-selector-container" id="agentModeContainer" style="border-color: var(--accent); background: rgba(0, 114, 255, 0.05);">
+                        <select id="agentModeSelect" class="model-select" onchange="changeAgentMode()" style="font-weight: 600; color: var(--accent);">
+                            <option value="build" selected>Build Agent</option>
+                            <option value="plan">Plan Agent</option>
+                        </select>
+                    </div>
+                    <div class="model-selector-container">
+                        <select id="modelSelect" class="model-select" onchange="changeModel()">
+                            <option value="cloud" selected>Byte API</option>
+                            <optgroup label="Local Models" id="localModelGroup">
+                                <option value="local-detect">Detecting...</option>
+                            </optgroup>
+                            <option value="add-model">+ Add Model...</option>
+                        </select>
+                        <button id="downloadModelBtn" class="btn-download" onclick="downloadModel()" title="Download Model" style="display: none;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        </button>
+                    </div>
                     <button class="btn-icon" onclick="exportChat()" title="Export Chat">${icons.download}</button>
                     <button class="btn-icon" onclick="newChat()" title="New Chat">${icons.plus}</button>
                     <button class="btn-icon" onclick="toggleDrawer()" title="History">${icons.history}</button>
@@ -981,74 +1347,84 @@ export class ChatViewHtml {
                 </div>
             </div>
 
-            <div id="settings-drawer">
-                <div class="drawer-header">
-                    <div class="drawer-top-bar">
-                        <span class="drawer-title">${icons.settings} Settings</span>
-                        <button class="btn-icon" onclick="toggleSettings()" title="Close">${icons.close}</button>
-                    </div>
+            <div id="settings-page" class="settings-page">
+                <div class="settings-header">
+                    <div class="settings-title">${icons.settings} Settings</div>
+                    <button class="btn-icon" onclick="toggleSettings()" title="Close">${icons.close}</button>
                 </div>
-                <div class="settings-content">
-                    <div class="setting-group">
-                        <div class="setting-header">
-                            <span class="setting-icon">${icons.edit}</span>
-                            <div class="setting-label">CUSTOM INSTRUCTIONS</div>
+                <div class="settings-body">
+                    <div class="settings-sidebar">
+                        <div class="settings-nav-item active" onclick="switchSettingsTab('general')">
+                            ${icons.settings} General
                         </div>
-                        <div class="setting-desc">Customize the AI's behavior and persona for this workspace.</div>
-                        <textarea id="customInstructions" class="setting-input" rows="5" placeholder="E.g. You are an expert Python developer. Always include type hints. Be concise."></textarea>
-                    </div>
-
-                    <div class="settings-divider"></div>
-
-                    <div class="setting-group">
-                         <div class="setting-row">
-                             <div class="setting-info">
-                                 <div class="setting-header">
-                                     <span class="setting-icon">${icons.code}</span>
-                                     <div class="setting-label">AUTO-CONTEXT</div>
-                                 </div>
-                                 <div class="setting-desc">Automatically include relevant code context from your project.</div>
-                             </div>
-                             <label class="switch">
-                                 <input type="checkbox" id="autoContext" checked>
-                                 <span class="slider round"></span>
-                             </label>
-                         </div>
-                    </div>
-
-                    <div class="settings-divider"></div>
-
-                    <div class="setting-group keyboard-shortcuts">
-                        <div class="setting-header">
-                            <span class="setting-icon">⌨️</span>
-                            <div class="setting-label">KEYBOARD SHORTCUTS</div>
+                        <div class="settings-nav-item" onclick="switchSettingsTab('models')">
+                            ${icons.download} Models
                         </div>
-                        <div class="shortcuts-grid">
-                            <div class="shortcut-item">
-                                <span class="shortcut-key">Enter</span>
-                                <span class="shortcut-action">Send message</span>
-                            </div>
-                            <div class="shortcut-item">
-                                <span class="shortcut-key">Shift + Enter</span>
-                                <span class="shortcut-action">New line</span>
-                            </div>
-                            <div class="shortcut-item">
-                                <span class="shortcut-key">ESC</span>
-                                <span class="shortcut-action">Close popups</span>
-                            </div>
-                            <div class="shortcut-item">
-                                <span class="shortcut-key">@</span>
-                                <span class="shortcut-action">Mention file</span>
-                            </div>
-                            <div class="shortcut-item">
-                                <span class="shortcut-key">/</span>
-                                <span class="shortcut-action">Quick command</span>
-                            </div>
+                        <div class="settings-nav-item" onclick="switchSettingsTab('shortcuts')">
+                            ${icons.code} Shortcuts
                         </div>
                     </div>
-                </div>
-                <div class="drawer-footer">
-                    <button class="btn-save" onclick="saveSettings()">${icons.check} Save Changes</button>
+                    <div class="settings-content-panel">
+                        <!-- General Section -->
+                        <div id="section-general" class="settings-section active">
+                            <div class="section-title">General Preferences</div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Custom Instructions</label>
+                                <div class="form-desc">Define the AI's persona and behavior guidelines for this workspace.</div>
+                                <textarea id="customInstructions" class="setting-input" rows="5" placeholder="E.g. You are an expert Python developer. Always include type hints. Be concise."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Auto-Context</label>
+                                <div class="setting-row">
+                                    <div class="form-desc" style="margin:0;">Automatically include relevant code context from your project.</div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="autoContext" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 32px;">
+                                <button class="btn-save" onclick="saveSettings()">${icons.check} Save Changes</button>
+                            </div>
+                        </div>
+
+                        <!-- Models Section -->
+                        <div id="section-models" class="settings-section">
+                            <div class="section-title">Installed Local Models</div>
+                            <div id="installed-models-list" class="model-list">
+                                <!-- Populated by JS -->
+                                <div style="text-align: center; padding: 20px; color: var(--text-secondary);">Loading models...</div>
+                            </div>
+
+                            <div class="section-title" style="margin-top: 32px;">Add New Model</div>
+                            <div class="add-model-card">
+                                <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px;">Recommended Models</div>
+                                <div class="model-grid" id="recommended-models-grid">
+                                    <!-- Populated by JS -->
+                                </div>
+                                
+                                <div style="margin-top: 16px; display: flex; gap: 8px;">
+                                    <input type="text" id="customModelInput" placeholder="Or enter model name (e.g. llama3:70b)" style="flex:1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-primary);">
+                                    <button class="btn-save" style="width: auto; padding: 0 16px;" onclick="downloadCustomModel()">Pull</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Shortcuts Section -->
+                        <div id="section-shortcuts" class="settings-section">
+                            <div class="section-title">Keyboard Shortcuts</div>
+                            <div class="shortcuts-grid">
+                                <div class="shortcut-item"><span class="shortcut-key">Enter</span><span class="shortcut-action">Send message</span></div>
+                                <div class="shortcut-item"><span class="shortcut-key">Shift + Enter</span><span class="shortcut-action">New line</span></div>
+                                <div class="shortcut-item"><span class="shortcut-key">ESC</span><span class="shortcut-action">Close popups</span></div>
+                                <div class="shortcut-item"><span class="shortcut-key">@</span><span class="shortcut-action">Mention file</span></div>
+                                <div class="shortcut-item"><span class="shortcut-key">/</span><span class="shortcut-action">Quick command</span></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1122,6 +1498,8 @@ export class ChatViewHtml {
                 </div>
             </div>
 
+
+
             <div id="toast-container"></div>
 
             <script>
@@ -1150,6 +1528,334 @@ export class ChatViewHtml {
                 const commandPopup = document.getElementById('commandPopup');
                 const filePopup = document.getElementById('filePopup');
                 const emptyState = document.getElementById('emptyState');
+                const modelSelect = document.getElementById('modelSelect');
+                const downloadModelBtn = document.getElementById('downloadModelBtn');
+                
+                // Model Functions
+                const recommendedModels = [
+                    // Small (1B - 3B)
+                    { name: 'tinydolphin', desc: 'Tiny Dolphin (1.1B)', size: 'small' },
+                    { name: 'phi', desc: 'Microsoft Phi-2 (2.7B)', size: 'small' },
+                    { name: 'gemma:2b', desc: 'Google Gemma (2B)', size: 'small' },
+                    { name: 'qwen:1.8b', desc: 'Qwen (1.8B)', size: 'small' },
+                    { name: 'stable-code:3b', desc: 'Stable Code (3B)', size: 'small' },
+                    { name: 'deepseek-coder:1.3b', desc: 'DeepSeek Coder (1.3B)', size: 'small' },
+                    
+                    // Medium (7B - 10B)
+                    { name: 'llama3', desc: 'Meta Llama 3 (8B)', size: 'medium' },
+                    { name: 'mistral', desc: 'Mistral 7B', size: 'medium' },
+                    { name: 'gemma:7b', desc: 'Google Gemma (7B)', size: 'medium' },
+                    { name: 'codellama', desc: 'Code Llama (7B)', size: 'medium' },
+                    { name: 'openhermes', desc: 'OpenHermes 2.5', size: 'medium' },
+                    { name: 'neural-chat', desc: 'Neural Chat (7B)', size: 'medium' },
+                    { name: 'starling-lm', desc: 'Starling LM (7B)', size: 'medium' },
+                    { name: 'zephyr', desc: 'Zephyr (7B)', size: 'medium' },
+                    { name: 'solar', desc: 'Solar 10.7B', size: 'medium' },
+                    { name: 'deepseek-coder:6.7b', desc: 'DeepSeek Coder (6.7B)', size: 'medium' },
+
+                    // Large (13B - 70B+)
+                    { name: 'llama3:70b', desc: 'Meta Llama 3 (70B)', size: 'large' },
+                    { name: 'codellama:13b', desc: 'Code Llama (13B)', size: 'large' },
+                    { name: 'codellama:34b', desc: 'Code Llama (34B)', size: 'large' },
+                    { name: 'codellama:70b', desc: 'Code Llama (70B)', size: 'large' },
+                    { name: 'mistral-nemo', desc: 'Mistral Nemo (12B)', size: 'large' },
+                    { name: 'mixtral', desc: 'Mixtral 8x7B', size: 'large' },
+                    { name: 'qwen:14b', desc: 'Qwen (14B)', size: 'large' },
+                    { name: 'qwen:32b', desc: 'Qwen (32B)', size: 'large' },
+                    { name: 'qwen:72b', desc: 'Qwen (72B)', size: 'large' },
+                    { name: 'deepseek-coder:33b', desc: 'DeepSeek Coder (33B)', size: 'large' },
+                    { name: 'wizardcoder:33b', desc: 'WizardCoder (33B)', size: 'large' },
+                    { name: 'phind-codellama:34b', desc: 'Phind CodeLlama (34B)', size: 'large' }
+                ];
+
+                window.addEventListener('message', event => {
+                    const message = event.data;
+                    switch (message.type) {
+                        case 'localModels':
+                            updateLocalModels(message.models);
+                            break;
+                        case 'updateSettings':
+                            updateSettings(message.value);
+                            break;
+                    }
+                });
+
+                function updateSettings(settings) {
+                    if (settings.customInstructions !== undefined) {
+                        const el = document.getElementById('customInstructions');
+                        if (el) el.value = settings.customInstructions || '';
+                    }
+                    if (settings.autoContext !== undefined) {
+                        const el = document.getElementById('autoContext');
+                        if (el) el.checked = settings.autoContext;
+                    }
+                    
+                    if (settings.useLocalModel !== undefined) {
+                        const modelSelect = document.getElementById('modelSelect');
+                        const downloadModelBtn = document.getElementById('downloadModelBtn');
+                        
+                        if (settings.useLocalModel) {
+                            if (settings.localModelName) {
+                                // Ensure option exists
+                                const group = document.getElementById('localModelGroup');
+                                let exists = false;
+                                for (let i = 0; i < group.children.length; i++) {
+                                    if (group.children[i].value === settings.localModelName) {
+                                        exists = true;
+                                        break;
+                                    }
+                                }
+                                
+                                if (!exists && settings.localModelName) {
+                                    const option = document.createElement('option');
+                                    option.value = settings.localModelName;
+                                    option.text = settings.localModelName;
+                                    group.appendChild(option);
+                                }
+                                
+                                modelSelect.value = settings.localModelName;
+                            }
+                            if (downloadModelBtn) downloadModelBtn.style.display = 'flex';
+                        } else {
+                            modelSelect.value = 'cloud';
+                            if (downloadModelBtn) downloadModelBtn.style.display = 'none';
+                        }
+                    }
+                }
+
+                function saveSettings() {
+                    const instructions = document.getElementById('customInstructions').value;
+                    const autoContext = document.getElementById('autoContext').checked;
+                    
+                    vscode.postMessage({
+                        type: 'saveSettings',
+                        value: {
+                            customInstructions: instructions,
+                            autoContext: autoContext
+                        }
+                    });
+                    
+                    // Show saved feedback
+                    const btn = document.querySelector('.btn-save');
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = 'Saved!';
+                    btn.style.background = 'var(--success)';
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.style.background = '';
+                    }, 2000);
+                }
+
+                // --- Settings Page Logic ---
+                function toggleSettings() {
+                    const page = document.getElementById('settings-page');
+                    const isOpen = page.classList.contains('open');
+                    
+                    if (!isOpen) {
+                        page.classList.add('open');
+                        
+                        // Close other drawers
+                        if (sessionDrawer) sessionDrawer.classList.remove('open');
+                        if (planDrawer) {
+                            planDrawer.classList.remove('open');
+                            planDrawer.style.width = '0';
+                        }
+
+                        // Refresh models when opening settings
+                        vscode.postMessage({ type: 'getLocalModels' });
+                        renderRecommendedModels();
+                    } else {
+                        page.classList.remove('open');
+                    }
+                }
+
+                function switchSettingsTab(tabName) {
+                    // Update sidebar active state
+                    document.querySelectorAll('.settings-nav-item').forEach(item => {
+                        item.classList.remove('active');
+                        if (item.getAttribute('onclick').includes(tabName)) {
+                            item.classList.add('active');
+                        }
+                    });
+
+                    // Update content section visibility
+                    document.querySelectorAll('.settings-section').forEach(section => {
+                        section.classList.remove('active');
+                    });
+                    document.getElementById('section-' + tabName).classList.add('active');
+                }
+
+                function renderRecommendedModels() {
+                    const grid = document.getElementById('recommended-models-grid');
+                    grid.innerHTML = '';
+                    
+                    // Group by size for better display, or just list them with badges
+                    recommendedModels.forEach(model => {
+                        const div = document.createElement('div');
+                        div.className = 'model-card';
+                        
+                        let badgeColor = '#4CAF50'; // Green for small
+                        if (model.size === 'medium') badgeColor = '#2196F3'; // Blue
+                        if (model.size === 'large') badgeColor = '#FF9800'; // Orange
+                        
+                        div.innerHTML = \`
+                            <div class="model-info">
+                                <div class="model-name">\${model.name}</div>
+                                <div class="model-desc">\${model.desc}</div>
+                                <span style="display:inline-block; font-size:10px; padding:2px 6px; border-radius:4px; background:\${badgeColor}20; color:\${badgeColor}; margin-top:4px; text-transform:uppercase; font-weight:700;">\${model.size}</span>
+                            </div>
+                            <button class="btn-download-sm" onclick="downloadSpecificModel('\${model.name}')">
+                                ${icons.download}
+                            </button>
+                        \`;
+                        grid.appendChild(div);
+                    });
+                }
+
+                function downloadSpecificModel(name) {
+                    vscode.postMessage({
+                        type: 'downloadModel',
+                        modelName: name
+                    });
+                    
+                    // Show feedback
+                    const toast = document.createElement('div');
+                    toast.className = 'toast';
+                    toast.innerText = \`Starting download for \${name}...\`;
+                    document.getElementById('toast-container').appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+                }
+                
+                function downloadCustomModel() {
+                    const input = document.getElementById('customModelInput');
+                    const name = input.value.trim();
+                    if (name) {
+                        downloadSpecificModel(name);
+                        input.value = '';
+                    }
+                }
+
+                function deleteLocalModel(name) {
+                    if (confirm('Are you sure you want to delete ' + name + '? This cannot be undone.')) {
+                        vscode.postMessage({
+                            type: 'deleteLocalModel',
+                            name: name
+                        });
+                    }
+                }
+
+                function updateLocalModels(models) {
+                    // Update main dropdown
+                    const group = document.getElementById('localModelGroup');
+                    const currentVal = modelSelect.value;
+                    
+                    group.innerHTML = ''; // Clear existing
+                    
+                    // Safe check for models array
+                    if (!models || !Array.isArray(models) || models.length === 0) {
+                        const option = document.createElement('option');
+                        option.disabled = true;
+                        option.text = 'No models found (Install Ollama)';
+                        group.appendChild(option);
+                    } else {
+                        models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model;
+                            option.text = model;
+                            group.appendChild(option);
+                        });
+                    }
+                    
+                    // Restore selection if it still exists
+                    const options = Array.from(group.children);
+                    const exists = options.some(opt => opt.value === currentVal);
+                    if (exists) {
+                        modelSelect.value = currentVal;
+                    } else if (modelSelect.value === 'local-detect' && models && models.length > 0) {
+                        // If we were detecting, select the first one
+                        modelSelect.value = models[0];
+                        changeModel(); // Trigger change
+                    }
+
+                    // Update Settings Page List
+                    const list = document.getElementById('installed-models-list');
+                    if (list) {
+                        list.innerHTML = '';
+                        if (!models || !Array.isArray(models) || models.length === 0) {
+                            list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No local models installed.<br><small>Make sure Ollama is running.</small></div>';
+                        } else {
+                            models.forEach(model => {
+                                const item = document.createElement('div');
+                                item.className = 'model-item';
+                                item.innerHTML = \`
+                                    <div style="font-weight: 500;">\${model}</div>
+                                    <button class="btn-danger" onclick="deleteLocalModel('\${model}')">Remove</button>
+                                \`;
+                                list.appendChild(item);
+                            });
+                        }
+                    }
+                }
+
+                window.changeAgentMode = () => {
+                    const mode = document.getElementById('agentModeSelect').value;
+                    vscode.postMessage({
+                        type: 'setAgentMode',
+                        mode: mode
+                    });
+                    
+                    // Update UI feedback
+                    const container = document.getElementById('agentModeContainer');
+                    const select = document.getElementById('agentModeSelect');
+                    
+                    if (mode === 'plan') {
+                        container.style.borderColor = '#FF9800'; // Orange for Plan
+                        container.style.background = 'rgba(255, 152, 0, 0.05)';
+                        select.style.color = '#FF9800';
+                    } else {
+                        container.style.borderColor = 'var(--accent)'; // Blue for Build
+                        container.style.background = 'rgba(0, 114, 255, 0.05)';
+                        select.style.color = 'var(--accent)';
+                    }
+                };
+
+                window.changeModel = () => {
+                    const model = modelSelect.value;
+                    
+                    if (model === 'add-model') {
+                        toggleSettings();
+                        switchSettingsTab('models');
+                        // Reset to cloud temporarily to avoid showing "add-model" as selected
+                        modelSelect.value = 'cloud';
+                        downloadModelBtn.style.display = 'none';
+                        return;
+                    }
+
+                    if (model === 'local-detect') {
+                        return;
+                    }
+
+                    // Check if it's one of the local models (anything not 'cloud' and not 'add-model')
+                    if (model !== 'cloud') {
+                        downloadModelBtn.style.display = 'flex';
+                        vscode.postMessage({ type: 'setModel', model: 'local', modelName: model });
+                    } else {
+                        downloadModelBtn.style.display = 'none';
+                        vscode.postMessage({ type: 'setModel', model: 'cloud' });
+                    }
+                };
+
+                window.downloadModel = () => {
+                    toggleSettings();
+                    switchSettingsTab('models');
+                };
+
+                /* Modal functions removed in favor of Settings Page */
+
+                // Initial fetch
+                setTimeout(() => {
+                    vscode.postMessage({ type: 'getLocalModels' });
+                }, 1000);
                 
                 // State
                 let selectedFiles = [];
@@ -1163,10 +1869,16 @@ export class ChatViewHtml {
                     } else {
                         planDrawer.classList.add('open');
                         planDrawer.style.width = '350px';
+                        
                         // Close other drawers
                         if (sessionDrawer) {
                             sessionDrawer.classList.remove('open');
-                            sessionDrawer.style.width = '0';
+                            sessionDrawer.style.width = ''; 
+                        }
+
+                        const settingsPage = document.getElementById('settings-page');
+                        if (settingsPage && settingsPage.classList.contains('open')) {
+                            settingsPage.classList.remove('open');
                         }
                     }
                 };
@@ -2233,10 +2945,17 @@ export class ChatViewHtml {
                 function toggleDrawer() { 
                     try {
                         const sessionDrawer = document.getElementById('session-drawer');
-                        const settingsDrawer = document.getElementById('settings-drawer');
+                        const settingsPage = document.getElementById('settings-page');
                         
-                        if (settingsDrawer && settingsDrawer.classList.contains('open')) {
-                            settingsDrawer.classList.remove('open');
+                        // Close settings if open
+                        if (settingsPage && settingsPage.classList.contains('open')) {
+                            settingsPage.classList.remove('open');
+                        }
+                        
+                        // Close plan if open
+                        if (planDrawer && (planDrawer.classList.contains('open') || planDrawer.style.width === '350px')) {
+                            planDrawer.classList.remove('open');
+                            planDrawer.style.width = '0';
                         }
 
                         sessionDrawer.classList.toggle('open');
@@ -2378,37 +3097,8 @@ export class ChatViewHtml {
                     vscode.postMessage({ type: 'deleteSession', id: id });
                 };
 
-                // Settings Functions
-                window.toggleSettings = () => {
-                    try {
-                        const settingsDrawer = document.getElementById('settings-drawer');
-                        const sessionDrawer = document.getElementById('session-drawer');
-                        
-                        if (sessionDrawer && sessionDrawer.classList.contains('open')) {
-                            sessionDrawer.classList.remove('open');
-                        }
+                // Removed duplicate/broken settings functions
 
-                        const isOpen = settingsDrawer.classList.contains('open');
-                        if (!isOpen) {
-                            vscode.postMessage({ type: 'getSettings' });
-                            settingsDrawer.classList.add('open');
-                        } else {
-                            settingsDrawer.classList.remove('open');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        if(window.showToast) window.showToast("Error opening settings: " + e.message);
-                    }
-                };
-
-                window.saveSettings = () => {
-                    const settings = {
-                        customInstructions: document.getElementById('customInstructions').value,
-                        autoContext: document.getElementById('autoContext').checked
-                    };
-                    vscode.postMessage({ type: 'saveSettings', value: settings });
-                    document.getElementById('settings-drawer').classList.remove('open');
-                };
 
                 window.scrollToBottom = () => {
                     chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });

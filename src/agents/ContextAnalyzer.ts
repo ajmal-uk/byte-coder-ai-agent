@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { BaseAgent, AgentOutput } from '../core/AgentTypes';
 import { ContextPlan } from './ContextPlanner';
 
@@ -93,11 +94,28 @@ export class ContextAnalyzer extends BaseAgent<ContextAnalyzerInput, AnalyzedCon
 
             const resolveImport = (importPath: string): string => {
                 if (importPath.startsWith('.')) {
-                    // Resolve relative path to absolute
-                    // We try to match with extensions if possible, but for now just resolving the base path
-                    // to facilitate graph building is enough.
-                    // The graph builder can do fuzzy matching on the end.
-                    return path.resolve(fileDir, importPath);
+                    const absolutePath = path.resolve(fileDir, importPath);
+                    
+                    // 1. Check if exact path exists in our file map
+                    if (files.has(absolutePath)) return absolutePath;
+
+                    // 2. Check common extensions
+                    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.py'];
+                    for (const ext of extensions) {
+                        const withExt = absolutePath + ext;
+                        if (files.has(withExt)) return withExt;
+                        // Also check disk if not in map (optional, but good for completeness)
+                        if (fs.existsSync(withExt)) return withExt;
+                    }
+
+                    // 3. Check for directory index files
+                    for (const ext of extensions) {
+                        const indexWithExt = path.join(absolutePath, 'index' + ext);
+                        if (files.has(indexWithExt)) return indexWithExt;
+                        if (fs.existsSync(indexWithExt)) return indexWithExt;
+                    }
+
+                    return absolutePath;
                 }
                 return importPath; // External package
             };
@@ -114,10 +132,63 @@ export class ContextAnalyzer extends BaseAgent<ContextAnalyzerInput, AnalyzedCon
                 deps.push(resolveImport(match[1]));
             }
             
-            // Python imports (simple extraction, no resolution for now as it's complex)
-            const pyImportMatches = content.matchAll(/^(?:from|import)\s+([\w\.]+)/gm);
+            // Python imports
+            const resolvePythonImport = (importPath: string): string => {
+                // Handle relative imports (starting with dots)
+                if (importPath.startsWith('.')) {
+                    // Count leading dots to determine level
+                    const leadingDotsMatch = importPath.match(/^\.+/);
+                    const leadingDots = leadingDotsMatch ? leadingDotsMatch[0].length : 0;
+                    const modulePath = importPath.substring(leadingDots);
+                    
+                    // Python: . is current, .. is parent, ... is grandparent
+                    // path.resolve handles .. correctly, but we need to construct the path
+                    // . means current directory
+                    let searchDir = fileDir;
+                    for (let i = 1; i < leadingDots; i++) {
+                        searchDir = path.dirname(searchDir);
+                    }
+
+                    const parts = modulePath.split('.');
+                    const relativePath = path.join(...parts);
+                    const absolutePath = path.resolve(searchDir, relativePath);
+
+                    // Check file.py
+                    if (files.has(absolutePath + '.py')) return absolutePath + '.py';
+                    if (fs.existsSync(absolutePath + '.py')) return absolutePath + '.py';
+
+                    // Check file/__init__.py
+                    const initPath = path.join(absolutePath, '__init__.py');
+                    if (files.has(initPath)) return initPath;
+                    if (fs.existsSync(initPath)) return initPath;
+
+                    return absolutePath;
+                }
+                
+                // Handle absolute/local imports
+                // Try to find it relative to current file first (local module)
+                const parts = importPath.split('.');
+                const relativePath = path.join(...parts);
+                const localPath = path.resolve(fileDir, relativePath);
+
+                if (files.has(localPath + '.py')) return localPath + '.py';
+                if (fs.existsSync(localPath + '.py')) return localPath + '.py';
+                
+                const localInitPath = path.join(localPath, '__init__.py');
+                if (files.has(localInitPath)) return localInitPath;
+                if (fs.existsSync(localInitPath)) return localInitPath;
+
+                return importPath;
+            };
+
+            const pyFromMatches = content.matchAll(/^from\s+([\.\w]+)\s+import\s+/gm);
+            for (const match of pyFromMatches) {
+                deps.push(resolvePythonImport(match[1]));
+            }
+
+            const pyImportMatches = content.matchAll(/^import\s+([\w\.]+)/gm);
             for (const match of pyImportMatches) {
-                deps.push(match[1]);
+                deps.push(resolvePythonImport(match[1]));
             }
 
             if (deps.length > 0) {

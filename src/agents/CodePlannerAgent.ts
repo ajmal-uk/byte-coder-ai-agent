@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { BaseAgent, AgentOutput, CodePlan } from '../core/AgentTypes';
 import { AnalyzedContext } from './ContextAnalyzer';
 import { ByteAIClient } from '../byteAIClient';
+import { ArchitectureDesign } from './ArchitectAgent';
 
 export interface CodePlannerInput {
     query: string;
@@ -20,6 +21,7 @@ export interface CodePlannerInput {
         database?: string;
     };
     features?: string[];
+    architecture?: ArchitectureDesign;
 }
 
 export interface CodePlannerResult extends CodePlan {
@@ -190,27 +192,35 @@ Output ONLY a JSON array of objects:
      */
     private generateFileStructure(input: CodePlannerInput): string[] {
         const structure: string[] = [];
-        const baseStructure = this.FOLDER_TEMPLATES[input.projectType] || this.FOLDER_TEMPLATES['web'];
 
-        // Add base folders
-        structure.push(...baseStructure);
-
-        // Add feature-specific files
-        const lowerQuery = input.query.toLowerCase();
-        const features = input.features || this.extractFeatures(lowerQuery);
-
-        for (const feature of features) {
-            structure.push(...this.getFeatureFiles(feature, input.projectType));
+        // 1. Use Architect's structure if available
+        if (input.architecture?.fileStructure) {
+            structure.push(...input.architecture.fileStructure);
+        } else {
+            // Fallback to templates
+            const baseStructure = this.FOLDER_TEMPLATES[input.projectType] || this.FOLDER_TEMPLATES['web'];
+            structure.push(...baseStructure);
         }
 
-        // Add entry point files
-        if (input.projectType === 'web' || input.projectType === 'fullstack') {
-            structure.push('src/App.tsx');
-            structure.push('src/main.tsx');
-            structure.push('src/index.css');
-        } else if (input.projectType === 'api') {
-            structure.push('src/index.ts');
-            structure.push('src/app.ts');
+        // Add base folders if using templates or if architect didn't provide them
+        if (!input.architecture) {
+             // Add feature-specific files
+            const lowerQuery = input.query.toLowerCase();
+            const features = input.features || this.extractFeatures(lowerQuery);
+
+            for (const feature of features) {
+                structure.push(...this.getFeatureFiles(feature, input.projectType));
+            }
+
+            // Add entry point files
+            if (input.projectType === 'web' || input.projectType === 'fullstack') {
+                structure.push('src/App.tsx');
+                structure.push('src/main.tsx');
+                structure.push('src/index.css');
+            } else if (input.projectType === 'api') {
+                structure.push('src/index.ts');
+                structure.push('src/app.ts');
+            }
         }
 
         // Filter existing files if provided
@@ -292,6 +302,14 @@ Output ONLY a JSON array of objects:
      * Generate TypeScript interfaces using LLM with fallback
      */
     private async generateInterfaces(input: CodePlannerInput): Promise<string[]> {
+        // 1. Use Architect's data models if available
+        if (input.architecture?.dataModels) {
+            return input.architecture.dataModels.map(model => {
+                const fields = model.fields.join('; ');
+                return `interface ${model.name} { ${fields} }`;
+            });
+        }
+
         const features = input.features || this.extractFeatures(input.query.toLowerCase(), input.contextKnowledge);
         
         // 1. Try LLM Generation
@@ -360,6 +378,11 @@ Example Output:
      * Generate API endpoints using LLM with fallback
      */
     private async generateApiEndpoints(input: CodePlannerInput): Promise<{ method: string; path: string; description: string }[] | undefined> {
+        // 1. Use Architect's endpoints if available
+        if (input.architecture?.apiEndpoints) {
+            return input.architecture.apiEndpoints;
+        }
+
         if (input.projectType === 'web') return undefined;
 
         const features = input.features || this.extractFeatures(input.query.toLowerCase());

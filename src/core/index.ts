@@ -5,4 +5,5 @@
 export * from './AgentTypes';
 export { ManagerAgent } from './ManagerAgent';
 export { PipelineEngine } from './PipelineEngine';
-export { AgentOrchestrator, AgenticAction, AgenticResult, ParsedInstruction } from './AgentOrchestrator';
+export { AgentOrchestrator, AgenticAction, AgenticResult } from './AgentOrchestrator';
+export { PersonaManager, PersonaType } from './PersonaManager';

@@ -55,7 +55,7 @@ export class SearchAgent {
         try {
             // Phase 1: Analyze intent
             this.emitStatus(onStatus, 'Analyzing', 'Understanding your query...');
-            const intent = this.intentAnalyzer.analyze(query);
+            const intent = await this.intentAnalyzer.analyze(query);
 
             const keywordPreview = intent.keywords.slice(0, 4).join(', ');
             this.emitStatus(onStatus, 'Analyzing', `Found keywords: ${keywordPreview}`);
@@ -224,8 +224,8 @@ export class SearchAgent {
     /**
      * Analyze query (exposed for external use)
      */
-    public analyzeQuery(query: string): SearchIntent {
-        return this.intentAnalyzer.analyze(query);
+    public async analyzeQuery(query: string): Promise<SearchIntent> {
+        return await this.intentAnalyzer.analyze(query);
     }
 
     /**

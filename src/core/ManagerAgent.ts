@@ -14,6 +14,8 @@ import {
     CONFIDENCE_THRESHOLDS,
     getDecisionAction
 } from './AgentTypes';
+import { IntentAnalyzer } from '../agents/IntentAnalyzer';
+import { PersonaManager } from './PersonaManager';
 
 export interface ManagerInput {
     query: string;
@@ -84,19 +86,25 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
         simple: ['line', 'variable', 'name', 'typo', 'string', 'value', 'style', 'color']
     };
 
+    private intentAnalyzer: IntentAnalyzer;
+    private personaManager: PersonaManager;
+
     constructor() {
         super({ name: 'Manager', timeout: 5000 });
+        this.intentAnalyzer = new IntentAnalyzer();
+        this.personaManager = new PersonaManager();
     }
 
     async execute(input: ManagerInput): Promise<AgentOutput<ManagerDecision>> {
         const startTime = Date.now();
 
         try {
-            // 1. Classify intent
-            const { intent, intentConfidence } = this.classifyIntent(input.query);
+            // 1. Classify intent (using LLM-enhanced analyzer)
+            const { intent, intentConfidence, analysis } = await this.classifyIntent(input.query);
 
             // 2. Assess complexity
-            const complexity = this.assessComplexity(input);
+            // Prefer analysis complexity if available, otherwise fallback to internal logic
+            const complexity = analysis?.complexity || this.assessComplexity(input);
 
             // 3. Calculate overall confidence
             const confidence = this.calculateConfidence(input, intent, intentConfidence);
@@ -105,7 +113,7 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
             const action = getDecisionAction(confidence);
 
             // 5. Construct pipeline based on intent and context
-            const pipeline = this.constructPipeline(intent, complexity, input, action);
+            const pipeline = this.constructPipeline(intent, complexity, input, action, analysis);
 
             // 6. Generate reasoning
             const reasoning = this.generateReasoning(intent, complexity, confidence, input);
@@ -133,7 +141,39 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
     /**
      * Classify the intent of the user query
      */
-    private classifyIntent(query: string): { intent: IntentType; intentConfidence: number } {
+    private async classifyIntent(query: string): Promise<{ intent: IntentType; intentConfidence: number; analysis?: any }> {
+        // Try to use the advanced IntentAnalyzer first
+        try {
+            const analysis = await this.intentAnalyzer.analyze(query);
+            
+            // Map QueryType to IntentType
+            const mapType = (type: string): IntentType => {
+                const map: Record<string, IntentType> = {
+                    'fix': 'Fix',
+                    'build': 'Build',
+                    'modify': 'Modify',
+                    'explain': 'Explain',
+                    'search': 'Explain', // Search is often informational
+                    'command': 'Command',
+                    'version_control': 'VersionControl',
+                    'web_search': 'WebSearch'
+                };
+                return map[type] || 'Explain';
+            };
+
+            // If analyzer is confident, use its result
+            if (analysis.confidence > 0.6) {
+                return {
+                    intent: mapType(analysis.queryType),
+                    intentConfidence: analysis.confidence,
+                    analysis
+                };
+            }
+        } catch (error) {
+            console.warn('ManagerAgent: IntentAnalyzer failed, falling back to heuristics', error);
+        }
+
+        // Fallback to internal heuristics
         const lowerQuery = query.toLowerCase();
         const scores: Record<IntentType, number> = {
             'Fix': 0, 'Build': 0, 'Modify': 0, 'Explain': 0, 'Design': 0, 'Audit': 0, 'Expand': 0, 'Command': 0, 'VersionControl': 0, 'WebSearch': 0
@@ -237,7 +277,8 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
         intent: IntentType,
         complexity: Complexity,
         input: ManagerInput,
-        action: string
+        action: string,
+        analysis?: any
     ): PipelineStep[] {
         const pipeline: PipelineStep[] = [];
         let step = 1;
@@ -381,7 +422,10 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
                     agent: 'Architect',
                     parallel: false,
                     required: true,
-                    args: { projectType: input.projectType }
+                    args: { 
+                        projectType: input.projectType || 'generic',
+                        existingFiles: analysis?.existingFiles 
+                    }
                 });
 
                 const processPlannerStep = step;
@@ -520,26 +564,34 @@ export class ManagerAgent extends BaseAgent<ManagerInput, ManagerDecision> {
         intent: IntentType,
         complexity: Complexity,
         confidence: number,
-        input: ManagerInput
+        input: ManagerInput,
+        pipeline?: PipelineStep[]
     ): string {
         const parts: string[] = [];
 
-        parts.push(`Detected intent: ${intent} (${(confidence * 100).toFixed(0)}% confidence)`);
-        parts.push(`Complexity assessment: ${complexity}`);
+        // Select persona for reasoning
+        let personaType: any = 'Generalist';
+        if (intent === 'Build' || intent === 'Design') personaType = 'SystemArchitect';
+        else if (intent === 'Fix' || intent === 'Audit') personaType = 'QAEngineer';
+        else if (intent === 'Command') personaType = 'DevOpsEngineer';
+        else if (intent === 'Modify') personaType = 'FrontendSpecialist'; // Defaulting for now
 
-        if (input.activeFilePath) {
-            parts.push(`Working in: ${input.activeFilePath.split('/').pop()}`);
+        const persona = this.personaManager.getPersona(personaType);
+
+        parts.push(`**Manager (${persona.role}) Analysis**:`);
+        parts.push(`- **Intent**: ${intent} (Confidence: ${(confidence * 100).toFixed(0)}%)`);
+        parts.push(`- **Complexity**: ${complexity.toUpperCase()}`);
+        
+        if (pipeline && pipeline.length > 0) {
+            const phases = new Set(pipeline.map(p => p.agent));
+            parts.push(`- **Strategy**: Activated agents [${Array.from(phases).join(', ')}]`);
         }
 
-        if (input.hasSelection) {
-            parts.push('Using selected code as context');
+        if (confidence < 0.7) {
+            parts.push(`- **Note**: Confidence is low. I will perform extra discovery steps.`);
         }
 
-        if (confidence < CONFIDENCE_THRESHOLDS.VERIFY) {
-            parts.push('Low confidence - initiating discovery phase');
-        }
-
-        return parts.join('. ');
+        return parts.join('\n');
     }
 
     /**

@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { BaseAgent, AgentOutput, ExecutionResult, FileLocation, CodeModification } from '../core/AgentTypes';
+import { PersonaManager } from '../core/PersonaManager';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,6 +19,7 @@ export interface ExecutorInput {
     expectSuccess?: boolean;
     parseErrors?: boolean;
     runInTerminal?: boolean; // New: run in visible terminal
+    persona?: string; // Optional persona context
 }
 
 export interface ExecutorOutput extends ExecutionResult {
@@ -28,6 +30,7 @@ export interface ExecutorOutput extends ExecutionResult {
         errorMessage: string;
         suggestions: string[];
     };
+    personaAdvice?: string;
 }
 
 export class ExecutorAgent extends BaseAgent<ExecutorInput, ExecutorOutput> {
@@ -53,8 +56,11 @@ export class ExecutorAgent extends BaseAgent<ExecutorInput, ExecutorOutput> {
         /(.+\.go):(\d+):/  // Go
     ];
 
+    private personaManager: PersonaManager;
+
     constructor() {
         super({ name: 'Executor', timeout: 60000 });
+        this.personaManager = new PersonaManager();
     }
 
     async execute(input: ExecutorInput): Promise<AgentOutput<ExecutorOutput>> {
@@ -305,21 +311,27 @@ export class ExecutorAgent extends BaseAgent<ExecutorInput, ExecutorOutput> {
 
         const { errorType, errorMessage } = result.parsed;
 
+        // Use Persona to analyze (simulated for now, could use LLM)
+        // This adds a layer of role-specific advice
+        const personaAdvice = this.analyzeErrorWithPersona(errorType, errorMessage);
+        if (personaAdvice) {
+            result.personaAdvice = personaAdvice;
+        }
+
         if (errorType === 'ModuleNotFound') {
-            // Suggest installing package
-            // Extract package name (simple heuristic)
+            // Smart package manager detection
             const pkgMatch = errorMessage.match(/'([^']+)'/);
             const pkg = pkgMatch ? pkgMatch[1] : errorMessage;
+            const installCmd = this.detectPackageManager(result.parsed.errorMessage.includes('yarn') ? 'yarn' : 'npm'); // Simple fallback
             
             options.push({
                 strategy: 'install_dependency',
                 confidence: 0.95,
-                command: `npm install ${pkg}`,
+                command: `${installCmd} ${pkg}`,
                 description: `Install missing dependency: ${pkg}`
             });
         }
         else if (errorType === 'FileNotFound') {
-            // Suggest creating file
             const fileMatch = errorMessage.match(/'([^']+)'/);
             if (fileMatch) {
                 options.push({
@@ -346,5 +358,27 @@ export class ExecutorAgent extends BaseAgent<ExecutorInput, ExecutorOutput> {
         }
 
         return options;
+    }
+
+    private detectPackageManager(preference: string = 'npm'): string {
+        // In a real scenario, we would check for lock files in the workspace.
+        // Since we don't have easy async access here without breaking the sync flow or adding async,
+        // we'll stick to a heuristic or preference.
+        // But wait, we can check fs if we have the cwd.
+        // However, this method signature doesn't have cwd. 
+        // Let's just return a safe default for now or use the preference.
+        return preference === 'yarn' ? 'yarn add' : 'npm install';
+    }
+
+    private analyzeErrorWithPersona(errorType: string, message: string): string {
+        const debuggerPersona = this.personaManager.getPersona('DevOpsEngineer'); // Or Debugger if we had it
+        
+        if (errorType === 'ModuleNotFound') {
+            return `[${debuggerPersona.role}] It seems a dependency is missing. Check your package.json or install it directly.`;
+        }
+        if (errorType === 'SyntaxError') {
+            return `[${debuggerPersona.role}] Syntax error detected. Review the code structure near the error line.`;
+        }
+        return `[${debuggerPersona.role}] Error detected: ${errorType}. Review the logs for details.`;
     }
 }

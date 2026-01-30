@@ -34,6 +34,7 @@ import { TodoManagerAgent, TodoManagerInput } from '../agents/TodoManagerAgent';
 import { ArchitectAgent } from '../agents/ArchitectAgent';
 import { QualityAssuranceAgent } from '../agents/QualityAssuranceAgent';
 import { WebSearchAgent } from '../agents/WebSearchAgent';
+import { PersonaManager } from './PersonaManager';
 
 export interface PipelineContext {
     query: string;
@@ -182,87 +183,113 @@ export class PipelineEngine {
                  const qaResult = context.results.get('QualityAssurance');
                  if (qaResult && qaResult.status === 'success' && qaResult.payload && !qaResult.payload.passed) {
                      // QA failed (logical failure)
-                     // Check retry count
-                     const retryCount = (context as any).retryCount || 0;
-                     if (retryCount < 3) {
-                         (context as any).retryCount = retryCount + 1;
-                         
-                         const qaIssues = (qaResult.payload.issues || []).map((i: any) => i.description).join('; ');
-                         
-                         this.emitStatus(onStatus, {
-                            phase: 'Quality Assurance',
-                            currentAgent: 'QualityAssurance',
-                            progress: Math.round((completedSteps / totalSteps) * 100),
-                            message: `QA Failed. Retrying (Attempt ${retryCount + 1}/3)... Issues: ${qaIssues}`,
-                            isComplete: false,
-                            hasError: false,
-                            plan: context.currentPlan,
-                            activeTaskId: this.getActiveTaskId(context, 'QualityAssurance')
-                         });
+                        // Check retry count
+                        const retryCount = (context as any).retryCount || 0;
+                        if (retryCount < 3) {
+                            (context as any).retryCount = retryCount + 1;
+                            
+                            const qaIssues = (qaResult.payload.issues || []).map((i: any) => i.description).join('; ');
+                            
+                            this.emitStatus(onStatus, {
+                               phase: 'Quality Assurance',
+                               currentAgent: 'QualityAssurance',
+                               progress: Math.round((completedSteps / totalSteps) * 100),
+                               message: `QA Failed. Planning recovery (Attempt ${retryCount + 1}/3)... Issues: ${qaIssues}`,
+                               isComplete: false,
+                               hasError: false,
+                               plan: context.currentPlan,
+                               activeTaskId: this.getActiveTaskId(context, 'QualityAssurance')
+                            });
 
-                         // Create recovery steps
-                         // We need to re-run CodeModifier -> Executor -> QualityAssurance
-                         // We pass the QA issues as instruction to CodeModifier
-                         // Since CodeModifier usually takes input from CodeGenerator, we need to adapt it.
-                         // But CodeModifier is designed to take `modifications` list.
-                         // Here we want it to "Fix issues".
-                         // We might need to run `CodeGenerator` again to generate the fix first.
-                         
-                         // Let's invoke CodeGenerator with a specific "Fix" task
-                         const fixTask: TaskNode = {
-                             id: `qa-fix-${Date.now()}`,
-                             description: `Fix QA issues: ${qaIssues}`,
-                             dependencies: [],
-                             status: 'pending'
-                         };
+                            // Use TaskPlanner to generate a recovery plan
+                            // This is much smarter than hardcoded steps
+                            const taskPlannerInput = {
+                                query: `Fix these QA issues in the code: ${qaIssues}. Original Request: ${context.query}`,
+                                projectType: 'recovery',
+                                fileStructure: [], // ContextAnalyzer should provide this ideally
+                                interfaces: [],
+                                activeFilePath: context.activeFilePath
+                            };
 
-                         // We can't easily invoke CodeGenerator here directly as a step without arguments.
-                         // But we can add steps to the queue.
-                         
-                         // We need a way to pass arguments to the steps in the queue.
-                         // The `PipelineStep` has `args`.
-                         
-                         // 1. CodeGenerator (to generate fix modifications)
-                         const existingCodePlan = context.results.get('CodePlanner')?.payload;
-                         const codeGenStep: PipelineStep = {
-                             step: 900 + retryCount * 3,
-                             agent: 'CodeGenerator',
-                             parallel: false,
-                             args: { 
-                                 taskPlan: { taskGraph: [fixTask], executionOrder: [fixTask.id] },
-                                 codePlan: existingCodePlan || { fileStructure: [], interfaces: [] }, // Fallback
-                                 context: {
-                                     knowledge: [{ summary: `Fix QA Issues: ${qaIssues}`, relevance: 1 }]
-                                 }
-                             }
-                         };
+                            const recoveryPlanResult = await this.taskPlanner.execute(taskPlannerInput);
+                            
+                            if (recoveryPlanResult.status === 'success' && recoveryPlanResult.payload.taskGraph.length > 0) {
+                                // We have a recovery plan!
+                                const recoveryTasks = recoveryPlanResult.payload.taskGraph;
+                                
+                                // Create pipeline steps for these tasks
+                                // We map them to CodeGenerator -> Executor sequence
+                                const newSteps: PipelineStep[] = [];
+                                let stepOffset = 900 + retryCount * 10;
 
-                         // 2. CodeModifier (to apply fixes)
-                         const codeModStep: PipelineStep = {
-                             step: 900 + retryCount * 3 + 1,
-                             agent: 'CodeModifier',
-                             parallel: false
-                         };
+                                // 1. Generate/Modify Code
+                                newSteps.push({
+                                    step: stepOffset++,
+                                    agent: 'CodeGenerator',
+                                    parallel: false,
+                                    args: {
+                                        taskPlan: recoveryPlanResult.payload,
+                                        codePlan: context.results.get('CodePlanner')?.payload || { fileStructure: [], interfaces: [] },
+                                        context: {
+                                            knowledge: [{ summary: `QA Issues to Fix: ${qaIssues}`, relevance: 1 }]
+                                        }
+                                    }
+                                });
 
-                         // 3. Executor (to verify)
-                         const execStep: PipelineStep = {
-                             step: 900 + retryCount * 3 + 2,
-                             agent: 'Executor',
-                             parallel: false,
-                             args: { runTests: true }
-                         };
+                                // 2. Execute/Verify
+                                newSteps.push({
+                                    step: stepOffset++,
+                                    agent: 'Executor',
+                                    parallel: false,
+                                    args: { runTests: true }
+                                });
 
-                         // 4. QualityAssurance (to re-verify)
-                         const qaStep: PipelineStep = {
-                             step: 900 + retryCount * 3 + 3,
-                             agent: 'QualityAssurance',
-                             parallel: false,
-                             args: { originalRequirements: context.query }
-                         };
+                                // 3. Re-verify with QA
+                                newSteps.push({
+                                    step: stepOffset++,
+                                    agent: 'QualityAssurance',
+                                    parallel: false,
+                                    args: { originalRequirements: context.query }
+                                });
 
-                         // Add to queue
-                         executionQueue.unshift([codeGenStep], [codeModStep], [execStep], [qaStep]);
-                     } else {
+                                // Inject into execution queue
+                                executionQueue.unshift(...newSteps.map(s => [s]));
+                                
+                                this.emitStatus(onStatus, {
+                                    phase: 'Planning',
+                                    currentAgent: 'TaskPlanner',
+                                    progress: Math.round((completedSteps / totalSteps) * 100),
+                                    message: `Generated ${recoveryTasks.length} recovery tasks`,
+                                    isComplete: false,
+                                    hasError: false
+                                });
+
+                            } else {
+                                // Fallback to simple retry if planning fails
+                                    const codeGenStep: PipelineStep = {
+                                    step: 900 + retryCount * 3,
+                                    agent: 'CodeGenerator',
+                                    parallel: false,
+                                    args: { 
+                                        taskPlan: { taskGraph: [{
+                                            id: `fix-retry-${retryCount}`,
+                                            description: `Fix QA issues: ${qaIssues}`,
+                                            dependencies: [],
+                                            status: 'pending',
+                                            filePath: context.activeFilePath,
+                                            persona: 'QAEngineer' // Assign QA persona for recovery
+                                        }], executionOrder: [] },
+                                        codePlan: context.results.get('CodePlanner')?.payload || { fileStructure: [], interfaces: [] },
+                                        context: {
+                                            knowledge: [{ summary: `Fix QA Issues: ${qaIssues}`, relevance: 1 }]
+                                        }
+                                    }
+                                };
+                                const execStep: PipelineStep = { step: 900 + retryCount * 3 + 1, agent: 'Executor', parallel: false, args: { runTests: true } };
+                                const qaStep: PipelineStep = { step: 900 + retryCount * 3 + 2, agent: 'QualityAssurance', parallel: false, args: { originalRequirements: context.query } };
+                                executionQueue.unshift([codeGenStep], [execStep], [qaStep]);
+                            }
+                        } else {
                          this.emitStatus(onStatus, {
                             phase: 'Quality Assurance',
                             currentAgent: 'QualityAssurance',
@@ -423,6 +450,8 @@ export class PipelineEngine {
         // Convert Plan to Search Intent for legacy FileFinder compatibility for now
         // Ideally FileFinder should accept the Plan directly
         const searchIntent: SearchIntent = {
+            originalQuery: query,
+            confidence: 1.0,
             keywords: plan.searchTerms,
             queryType: mapScopeToQueryType(plan.scope),
             codeTerms: [],
@@ -684,6 +713,7 @@ export class PipelineEngine {
                         const existingFiles = searchFiles.map(f => f.relativePath);
                         const contextAnalysis = context.results.get('ContextAnalyzer')?.payload;
                         const contextSearchForPlan = context.results.get('ContextSearch')?.payload;
+                        const architectDesign = context.results.get('Architect')?.payload;
 
                         const cpOut = await this.codePlanner.execute({
                             query: context.query,
@@ -691,7 +721,8 @@ export class PipelineEngine {
                             existingFiles: existingFiles,
                             contextAnalysis: contextAnalysis, // Pass analysis to planner
                             contextKnowledge: contextSearchForPlan?.memories?.filter((m: any) => m.type === 'knowledge') || [],
-                            techStack: processPlan?.techStack
+                            techStack: processPlan?.techStack,
+                            architecture: architectDesign
                         });
                         result = cpOut.status === 'success' ? cpOut.payload : null;
                         break;

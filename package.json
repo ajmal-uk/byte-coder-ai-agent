@@ -295,6 +295,16 @@
                 "default": true,
                 "description": "Automatically create files without confirmation for simple tasks (max 3 files, no commands)."
             },
+            "byteAI.useLocalModel": {
+                "type": "boolean",
+                "default": false,
+                "description": "Use local Ollama model instead of Cloud API."
+            },
+            "byteAI.localModelName": {
+                "type": "string",
+                "default": "llama3",
+                "description": "Name of the local Ollama model to use (e.g., llama3, mistral)."
+            },
             "byteAI.debugSearchAgent": {
                 "type": "boolean",
                 "default": false,

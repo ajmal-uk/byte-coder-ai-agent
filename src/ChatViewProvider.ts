@@ -20,6 +20,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
     private _pipelineEngine: PipelineEngine;
     private _longTermMemory: LongTermMemory;
     private _currentSessionId: string;
+    private _currentAgentMode: 'plan' | 'build' = 'build';
     private _history: Array<{ role: 'user' | 'assistant', text: string, files?: any[], commands?: any[] }> = [];
 
     constructor(
@@ -69,9 +70,125 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         });
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
-            switch (data.type) {
-                case 'sendMessage':
-                    await this.handleUserMessage(data.value, data.files, data.commands);
+            await this.handleMessage(data);
+        });
+
+        this.restoreLastSession();
+    }
+
+    private async ensureOllamaRunning(): Promise<boolean> {
+        // First check if Ollama is installed
+        const isInstalled = await this._client.isOllamaInstalled();
+        if (!isInstalled) {
+            const selection = await vscode.window.showErrorMessage(
+                'Ollama is not installed. Please download and install it to use local models.',
+                'Download Ollama'
+            );
+            if (selection === 'Download Ollama') {
+                vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/download'));
+            }
+            return false;
+        }
+
+        let isConnected = await this._client.checkLocalConnection();
+        if (isConnected) return true;
+
+        // Not running, try to start
+        vscode.window.showInformationMessage('ByteAI: Starting local Ollama server...');
+        
+        // Check if we already have a terminal
+        let terminal = vscode.window.terminals.find(t => t.name === 'ByteAI Ollama');
+        if (!terminal) {
+            terminal = vscode.window.createTerminal('ByteAI Ollama');
+        }
+        terminal.show(true); // show but don't take focus
+        terminal.sendText('ollama serve');
+
+        // Poll for connection (max 10 seconds)
+        for (let i = 0; i < 10; i++) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            isConnected = await this._client.checkLocalConnection();
+            if (isConnected) {
+                vscode.window.showInformationMessage('ByteAI: Ollama started successfully!');
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    private async handleMessage(data: any) {
+        switch (data.type) {
+            case 'setAgentMode':
+                this._currentAgentMode = data.mode;
+                this._agentOrchestrator.setAgentMode(data.mode);
+                vscode.window.showInformationMessage(`Switched to ${data.mode === 'plan' ? 'Plan (Read-Only)' : 'Build (Full Access)'} Agent.`);
+                break;
+            case 'sendMessage':
+                await this.handleUserMessage(data.value, data.files, data.commands);
+                break;
+            case 'getLocalModels':
+                const localModels = await this._client.listLocalModels();
+                this._view?.webview.postMessage({ type: 'localModels', models: localModels });
+                break;
+            case 'deleteLocalModel':
+                const deleted = await this._client.deleteLocalModel(data.name);
+                if (deleted) {
+                    vscode.window.showInformationMessage(`Model ${data.name} deleted successfully.`);
+                    // Refresh list
+                    const updatedModels = await this._client.listLocalModels();
+                    this._view?.webview.postMessage({ type: 'localModels', models: updatedModels });
+                } else {
+                    vscode.window.showErrorMessage(`Failed to delete model ${data.name}.`);
+                }
+                break;
+            case 'setModel':
+                if (data.model === 'local') {
+                    // If a specific model name is provided, set it
+                    if (data.modelName) {
+                        this._client.setLocalModelName(data.modelName);
+                    }
+
+                    const running = await this.ensureOllamaRunning();
+                    if (!running) {
+                        const selection = await vscode.window.showErrorMessage(
+                            'Ollama could not be started automatically. Please install it or run "ollama serve" manually.',
+                            'Install Ollama'
+                        );
+                        
+                        if (selection === 'Install Ollama') {
+                            vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/download'));
+                        }
+                    } else {
+                        // If no specific model name was provided, or if we want to verify existence
+                        // (Logic simplified: if switching to local, we assume user picked a valid one or default)
+                    }
+                }
+                this._client.setModel(data.model);
+                vscode.window.showInformationMessage(`Switched to ${data.model === 'local' ? (data.modelName ? `Local (${data.modelName})` : 'Local (Ollama)') : 'Byte API'} model.`);
+                break;
+            case 'downloadModel':
+                const runningDownload = await this.ensureOllamaRunning();
+                if (!runningDownload) {
+                        const selection = await vscode.window.showErrorMessage(
+                            'Ollama could not be started automatically. Please install it or run "ollama serve" manually.',
+                            'Install Ollama'
+                        );
+                        
+                        if (selection === 'Install Ollama') {
+                            vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/download'));
+                        }
+                        return;
+                }
+                // If a model name is provided, download it directly
+                    if (data.modelName) {
+                        const terminal = vscode.window.createTerminal('ByteAI Model Download');
+                        terminal.show();
+                        terminal.sendText(`ollama pull ${data.modelName}`);
+                        this._client.setLocalModelName(data.modelName);
+                    } else {
+                        await this.downloadLocalModel();
+                    }
                     break;
                 case 'newChat':
                     this.clearChat();
@@ -309,9 +426,6 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                     await this.handleSaveSettings(data.value);
                     break;
             }
-        });
-
-        this.restoreLastSession();
     }
 
     public async clearChat() {
@@ -320,6 +434,22 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         this._history = [];
         this._view?.webview.postMessage({ type: 'loadSession', history: this._history });
         // Don't save empty sessions - they'll be saved when user sends first message
+    }
+
+    private async downloadLocalModel() {
+        const models = ['llama3', 'mistral', 'codellama', 'phi3', 'deepseek-coder'];
+        const selected = await vscode.window.showQuickPick(models, {
+            placeHolder: 'Select a model to download (requires Ollama installed)'
+        });
+        
+        if (selected) {
+            const terminal = vscode.window.createTerminal('ByteAI Model Download');
+            terminal.show();
+            terminal.sendText(`ollama pull ${selected}`);
+            
+            // Inform the client which model to use locally
+            this._client.setLocalModelName(selected);
+        }
     }
 
     public async runCommand(command: string) {
@@ -534,31 +664,6 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             // Extract and store entities from user message
             await this._longTermMemory.extractAndStore(message, this._currentSessionId);
 
-            const mentionRegex = /@([^\s]+)/g;
-            const matches = message.match(mentionRegex);
-
-            const lowerMessage = message.toLowerCase();
-            const isFollowUp = lowerMessage.length < 120 && (
-                lowerMessage.startsWith('what is this') ||
-                lowerMessage.startsWith('what is that') ||
-                lowerMessage.startsWith('can you') ||
-                lowerMessage.startsWith('please') ||
-                lowerMessage.startsWith('and') ||
-                lowerMessage.includes('this code') ||
-                lowerMessage.includes('that code') ||
-                lowerMessage.includes('above code') ||
-                lowerMessage.includes('same code') ||
-                lowerMessage.includes('change this') ||
-                lowerMessage.includes('modify this') ||
-                lowerMessage.includes('make this') ||
-                lowerMessage.includes('in java') ||
-                lowerMessage.includes('in c++') ||
-                lowerMessage.includes('in python') ||
-                lowerMessage.includes('in typescript') ||
-                lowerMessage.includes('in ts') ||
-                lowerMessage.includes('in js')
-            );
-
             // === AGENTIC WORKFLOW ===
             // 1. Analyze Intent & Plan
             this._view?.webview.postMessage({
@@ -580,6 +685,13 @@ export class ChatPanel implements vscode.WebviewViewProvider {
                 activeFilePath,
                 hasSelection: !!selectionText,
                 selectionText
+            });
+
+            const detectedPersona = this._agentOrchestrator.detectPersona(message, decision.payload.intent);
+            this._view?.webview.postMessage({
+                type: 'agentStatus',
+                phase: 'Thinking',
+                message: `Manager Agent identified intent: ${decision.payload.intent} (Persona: ${detectedPersona})`
             });
 
             // 2. Execute Pipeline if needed
@@ -664,7 +776,7 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             // === AGENTIC EXECUTION ===
             // Parse AI response for executable instructions
             console.log('[ByteCoder] Parsing AI response for actions...');
-            const instructions = this._agentOrchestrator.parseAIResponse(fullResponse);
+            const instructions = this._agentOrchestrator.parseAIResponse(fullResponse, detectedPersona);
             console.log('[ByteCoder] Found instructions:', instructions.length);
 
             // If we have instructions, we are NOT done yet. 
@@ -910,7 +1022,9 @@ export class ChatPanel implements vscode.WebviewViewProvider {
         const config = vscode.workspace.getConfiguration('byteAI');
         const settings = {
             customInstructions: config.get<string>('customInstructions'),
-            autoContext: config.get<boolean>('autoContext')
+            autoContext: config.get<boolean>('autoContext'),
+            useLocalModel: config.get<boolean>('useLocalModel', false),
+            localModelName: config.get<string>('localModelName', 'llama3')
         };
         this._view?.webview.postMessage({ type: 'updateSettings', value: settings });
     }
@@ -920,6 +1034,14 @@ export class ChatPanel implements vscode.WebviewViewProvider {
             const config = vscode.workspace.getConfiguration('byteAI');
             await config.update('customInstructions', settings.customInstructions, vscode.ConfigurationTarget.Global);
             await config.update('autoContext', settings.autoContext, vscode.ConfigurationTarget.Global);
+            
+            // Fix: Persist model selection settings
+            if (settings.useLocalModel !== undefined) {
+                await config.update('useLocalModel', settings.useLocalModel, vscode.ConfigurationTarget.Global);
+            }
+            if (settings.localModelName) {
+                await config.update('localModelName', settings.localModelName, vscode.ConfigurationTarget.Global);
+            }
 
             // Refresh settings to ensure UI is in sync
             await this.handleGetSettings();

@@ -13,6 +13,59 @@ export class ByteAIClient {
     private readonly appId = "plan-organization";
     private chatId: string;
     private _ws?: WebSocket;
+    private _localModels: string[] = [];
+
+    private get useLocalModel(): boolean {
+        return vscode.workspace.getConfiguration('byteAI').get<boolean>('useLocalModel', false);
+    }
+
+    private get localModelName(): string {
+        return vscode.workspace.getConfiguration('byteAI').get<string>('localModelName', 'llama3');
+    }
+
+    public async setModel(model: 'cloud' | 'local') {
+        await vscode.workspace.getConfiguration('byteAI').update('useLocalModel', model === 'local', vscode.ConfigurationTarget.Global);
+    }
+
+    public async listLocalModels(): Promise<string[]> {
+        return new Promise((resolve) => {
+            const { exec } = require('child_process');
+            exec('ollama list', (error: any, stdout: string, stderr: string) => {
+                if (error) {
+                    console.error('Error listing local models:', error);
+                    resolve([]);
+                    return;
+                }
+                const lines = stdout.split('\n');
+                // Skip header (NAME ID SIZE MODIFIED)
+                const models = lines.slice(1)
+                    .filter(line => line.trim().length > 0)
+                    .map(line => line.split(/\s+/)[0])
+                    .filter(name => name !== 'NAME'); // Just in case
+                
+                this._localModels = models;
+                resolve(models);
+            });
+        });
+    }
+
+    public async deleteLocalModel(name: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const { exec } = require('child_process');
+            exec(`ollama rm ${name}`, (error: any, stdout: string, stderr: string) => {
+                if (error) {
+                    console.error('Error deleting local model:', error);
+                    resolve(false);
+                    return;
+                }
+                resolve(true);
+            });
+        });
+    }
+
+    public async setLocalModelName(name: string) {
+        await vscode.workspace.getConfiguration('byteAI').update('localModelName', name, vscode.ConfigurationTarget.Global);
+    }
 
     private getCustomInstructions(): string {
         try {
@@ -160,6 +213,10 @@ export class ByteAIClient {
     ): Promise<string> {
         this.disconnect();
 
+        if (this.useLocalModel) {
+            return this.streamLocalResponse(userInput, onChunk, onError);
+        }
+
         return new Promise((resolve, reject) => {
             let fullResponse = "";
             let hasResolved = false;
@@ -280,5 +337,160 @@ export class ByteAIClient {
             this._ws.terminate();
             this._ws = undefined;
         }
+    }
+
+    public async isOllamaInstalled(): Promise<boolean> {
+        return new Promise((resolve) => {
+            const { exec } = require('child_process');
+            exec('ollama --version', (error: any, stdout: string, stderr: string) => {
+                if (error) {
+                    resolve(false);
+                    return;
+                }
+                resolve(true);
+            });
+        });
+    }
+
+    public async checkLocalConnection(): Promise<boolean> {
+        return new Promise((resolve) => {
+            const http = require('http');
+            const req = http.get('http://localhost:11434/', (res: any) => {
+                resolve(res.statusCode === 200);
+            });
+            req.on('error', () => resolve(false));
+            req.setTimeout(2000, () => {
+                req.destroy();
+                resolve(false);
+            });
+        });
+    }
+
+    public async checkModelExists(modelName: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const http = require('http');
+            const req = http.get('http://localhost:11434/api/tags', (res: any) => {
+                let data = '';
+                res.on('data', (chunk: any) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const json = JSON.parse(data);
+                        const models = json.models || [];
+                        // Check if modelName is in the list (fuzzy match or exact)
+                        const exists = models.some((m: any) => m.name.startsWith(modelName));
+                        resolve(exists);
+                    } catch (e) {
+                        resolve(false);
+                    }
+                });
+            });
+            req.on('error', () => resolve(false));
+        });
+    }
+
+    private async streamLocalResponse(
+        userInput: string,
+        onChunk: (chunk: string) => void,
+        onError: (err: Error) => void
+    ): Promise<string> {
+        // 1. Check Connection
+        const isConnected = await this.checkLocalConnection();
+        if (!isConnected) {
+            const errorMsg = "Ollama is not running. Please run 'ollama serve' in your terminal.";
+            onError(new Error(errorMsg));
+            return Promise.reject(new Error(errorMsg));
+        }
+
+        // 2. Check Model Existence
+        const modelExists = await this.checkModelExists(this.localModelName);
+        if (!modelExists) {
+            const errorMsg = `Model '${this.localModelName}' not found. Please run 'ollama pull ${this.localModelName}' in your terminal.`;
+            onError(new Error(errorMsg));
+            return Promise.reject(new Error(errorMsg));
+        }
+
+        return new Promise((resolve, reject) => {
+            let fullResponse = "";
+            let buffer = ""; // Buffer for partial JSON lines
+            
+            const payload = {
+                model: this.localModelName,
+                messages: [
+                    { role: "system", content: this.SYSTEM_PROMPT + this.getCustomInstructions() },
+                    { role: "user", content: userInput }
+                ],
+                stream: true
+            };
+
+            const http = require('http');
+            const req = http.request({
+                hostname: 'localhost',
+                port: 11434,
+                path: '/api/chat',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }, (res: any) => {
+                // Check for non-200 status
+                if (res.statusCode !== 200) {
+                    let errorData = '';
+                    res.on('data', (chunk: any) => errorData += chunk);
+                    res.on('end', () => {
+                        const errorMsg = `Ollama API Error (${res.statusCode}): ${errorData}`;
+                        onError(new Error(errorMsg));
+                        reject(new Error(errorMsg));
+                    });
+                    return;
+                }
+
+                res.on('data', (chunk: any) => {
+                    buffer += chunk.toString();
+                    const lines = buffer.split('\n');
+                    // The last part might be incomplete, so save it back to buffer
+                    buffer = lines.pop() || ""; 
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const json = JSON.parse(line);
+                            if (json.message && json.message.content) {
+                                fullResponse += json.message.content;
+                                onChunk(json.message.content);
+                            }
+                            if (json.done) {
+                                resolve(fullResponse);
+                            }
+                        } catch (e) {
+                            // If parse fails, it might be a weird chunk, just ignore or log
+                            console.error("Error parsing Ollama chunk:", e);
+                        }
+                    }
+                });
+                
+                res.on('end', () => {
+                     // Try to parse any remaining buffer
+                     if (buffer.trim()) {
+                        try {
+                            const json = JSON.parse(buffer);
+                            if (json.message && json.message.content) {
+                                fullResponse += json.message.content;
+                                onChunk(json.message.content);
+                            }
+                        } catch (e) {}
+                     }
+                     if (fullResponse && !res.complete) resolve(fullResponse); // Ensure resolve if not already done
+                });
+            });
+
+            req.on('error', (e: any) => {
+                const errorMsg = `Ollama connection failed: ${e.message}. \n\nEnsure you have Ollama installed and running (run 'ollama serve' in terminal).`;
+                onError(new Error(errorMsg));
+                reject(new Error(errorMsg));
+            });
+
+            req.write(JSON.stringify(payload));
+            req.end();
+        });
     }
 }

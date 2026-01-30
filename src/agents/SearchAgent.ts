@@ -49,7 +49,7 @@ export class SearchAgent {
 
         try {
             // 1. Analyze Intent
-            const intent = this.intentAnalyzer.analyze(query);
+            const intent = await this.intentAnalyzer.analyze(query);
 
             // 2. Find Files (Intelligent Search)
             const fileMatches = await this.fileFinder.find(intent, activeFilePath);

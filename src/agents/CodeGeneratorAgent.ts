@@ -9,6 +9,7 @@ import { TaskPlannerResult } from './TaskPlannerAgent';
 import { CodePlannerResult } from './CodePlannerAgent';
 import { ByteAIClient } from '../byteAIClient';
 import { FilePartSearcherAgent, FilePartMatch } from './FilePartSearcherAgent';
+import { PersonaManager, PersonaType, Persona } from '../core/PersonaManager';
 
 export interface CodeGeneratorInput {
     taskPlan: TaskPlannerResult;
@@ -17,6 +18,7 @@ export interface CodeGeneratorInput {
         knowledge?: any[];
         files?: any[];
     };
+    persona?: PersonaType;
 }
 
 export interface CodeGeneratorResult {
@@ -32,11 +34,13 @@ type GenResult =
 export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGeneratorResult> {
     private client: ByteAIClient;
     private filePartSearcher: FilePartSearcherAgent;
+    private personaManager: PersonaManager;
 
     constructor() {
         super({ name: 'CodeGenerator', timeout: 60000 }); // Increased timeout for LLM generation
         this.client = new ByteAIClient();
         this.filePartSearcher = new FilePartSearcherAgent();
+        this.personaManager = new PersonaManager();
     }
 
     async execute(input: CodeGeneratorInput): Promise<AgentOutput<CodeGeneratorResult>> {
@@ -73,7 +77,7 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
                     if (task.filePath && !task.description.includes('mkdir')) {
                         return {
                             task,
-                            result: await this.generateForTask(task, input.codePlan, input.context)
+                            result: await this.generateForTask(task, input.codePlan, input.context, (task.persona as PersonaType) || input.persona)
                         };
                     }
                     return null;
@@ -115,10 +119,14 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
     /**
      * Generate content or modifications for a file using LLM with fallback to templates
      */
-    private async generateForTask(task: TaskNode, codePlan: CodePlannerResult, context?: CodeGeneratorInput['context']): Promise<GenResult> {
+    private async generateForTask(task: TaskNode, codePlan: CodePlannerResult, context?: CodeGeneratorInput['context'], forcedPersona?: PersonaType): Promise<GenResult> {
         const filePath = task.filePath!;
         const description = task.description;
         
+        // Detect persona if not forced
+        const personaType = forcedPersona || this.personaManager.detectPersona(description + ' ' + filePath, 'modify');
+        const persona = this.personaManager.getPersona(personaType);
+
         try {
             // Check if file exists and read content
             let fileExists = false;
@@ -190,41 +198,57 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
             }
 
             // Construct prompt for LLM
-            const prompt = this.constructPrompt(filePath, description, codePlan, fileExists, fileContent, context, isPartial);
+            const prompt = this.constructPrompt(filePath, description, codePlan, fileExists, fileContent, context, isPartial, persona);
             
             // Call LLM
-            const response = await this.client.streamResponse(
-                prompt,
-                () => {}, // We don't need to process chunks here
-                (err) => { console.warn('LLM streaming warning:', err); }
-            );
+        const response = await this.client.streamResponse(
+            prompt,
+            () => {}, // We don't need to process chunks here
+            (err) => { console.warn('LLM streaming warning:', err); }
+        );
 
-            // Extract code from response
-            const result = this.extractResult(response, filePath, fileExists);
-            
-            if (result) {
-                return result;
-            }
-            
-            console.warn(`Could not extract code/mods for ${filePath}, falling back to template.`);
-            return { type: 'create', content: this.generateFallbackContent(filePath, description, context) };
-
+        // Extract code from response
+        const result = this.extractResult(response, filePath, fileExists);
+        
+        if (result) {
+            return result;
+        }
+        
+        console.warn(`Could not extract code/mods for ${filePath}, falling back to template.`);
+        return { type: 'create', content: this.generateFallbackContent(filePath, description, context) };
         } catch (error) {
-            console.error(`LLM generation failed for ${filePath}:`, error);
+            console.error(`Error in generateForTask for ${filePath}:`, error);
             return { type: 'create', content: this.generateFallbackContent(filePath, description, context) };
         }
     }
 
-    private constructPrompt(filePath: string, description: string, codePlan: CodePlannerResult, fileExists: boolean, fileContent: string, context?: CodeGeneratorInput['context'], isPartial: boolean = false): string {
+    private constructPrompt(
+        filePath: string, 
+        description: string, 
+        codePlan: CodePlannerResult, 
+        fileExists: boolean, 
+        fileContent: string, 
+        context?: CodeGeneratorInput['context'], 
+        isPartial: boolean = false,
+        persona?: Persona
+    ): string {
         const fileName = filePath.split('/').pop() || 'file';
+        const fileExt = filePath.split('.').pop() || '';
 
-        let prompt = `Task: ${description}\n`;
+        let prompt = `Role: ${persona?.role || 'Expert Software Engineer'}\n`;
+        if (persona?.systemPrompt) {
+            prompt += `${persona.systemPrompt}\n\n`;
+        } else {
+            prompt += `You are an expert software engineer. Write production-quality, clean, and efficient code.\n\n`;
+        }
+        
+        prompt += `Task: ${description}\n`;
         prompt += `Target File: \`${filePath}\`\n`;
         prompt += `File Status: ${fileExists ? 'EXISTS (Modify it)' : 'NEW (Create it)'}\n\n`;
         
         if (fileExists && fileContent) {
             prompt += `**Current File Content${isPartial ? ' (PARTIAL/RELEVANT SECTIONS)' : ''}:**\n`;
-            prompt += `\`\`\`${filePath.split('.').pop() || 'text'}\n${fileContent}\n\`\`\`\n\n`;
+            prompt += `\`\`\`${fileExt}\n${fileContent}\n\`\`\`\n\n`;
         }
         
         if (codePlan.techStack) {
@@ -257,12 +281,19 @@ export class CodeGeneratorAgent extends BaseAgent<CodeGeneratorInput, CodeGenera
             }
         }
 
-        prompt += `\n**Requirements:**\n`;
+        prompt += `\n**General Requirements:**\n`;
+        prompt += `- Include comprehensive error handling (try/catch where appropriate).\n`;
+        prompt += `- Use proper logging/debugging statements.\n`;
+        prompt += `- Follow language idioms and best practices.\n`;
+        prompt += `- Ensure all imports are present and correct.\n`;
+        prompt += `- Add comments explaining complex logic.\n`;
+
+        prompt += `\n**Action Instructions:**\n`;
         if (fileExists) {
-            prompt += `1. The file ALREADY EXISTS. DO NOT rewrite the whole file.\n`;
+            prompt += `1. The file ALREADY EXISTS. DO NOT rewrite the whole file unless asked to "rewrite".\n`;
             prompt += `2. Output a JSON array of modifications inside <byte_action type="modify_file"> tags.\n`;
             prompt += `3. Format: [{"filePath": "${filePath}", "searchBlock": "unique code to find", "replaceBlock": "code to add/replace", "action": "replace" | "insert_before" | "insert_after" | "delete", "startLine": 0, "endLine": 0}]\n`;
-            prompt += `4. "searchBlock" must uniquely identify the anchor or target. \n`;
+            prompt += `4. "searchBlock" must uniquely identify the anchor or target. It must be EXACT match.\n`;
             prompt += `   - For REPLACEMENT: searchBlock is the code to be removed.\n`;
             prompt += `   - For INSERTION: searchBlock is the ANCHOR (existing code) to insert before/after.\n`;
             prompt += `5. IMPORTANT: If you are provided with partial content containing line numbers (e.g. // lines 50-60), YOU MUST USE THOSE LINE NUMBERS in "startLine" and "endLine" if your modification targets that specific block.\n`;

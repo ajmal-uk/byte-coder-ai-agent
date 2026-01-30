@@ -147,6 +147,7 @@ export interface TaskNode {
     parallelGroup?: string;
     assignedAgent?: string;
     complexity?: 'simple' | 'medium' | 'complex';
+    persona?: string; // e.g. 'BackendSpecialist', 'FrontendSpecialist'
 }
 
 export interface CodePlan {

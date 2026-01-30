@@ -1,6 +1,7 @@
 
 import { BaseAgent, AgentOutput } from '../core/AgentTypes';
 import { ByteAIClient } from '../byteAIClient';
+import { PersonaManager } from '../core/PersonaManager';
 
 export interface ArchitectInput {
     query: string;
@@ -32,17 +33,22 @@ export interface ArchitectureDesign {
 
 export class ArchitectAgent extends BaseAgent<ArchitectInput, ArchitectureDesign> {
     private client: ByteAIClient;
+    private personaManager: PersonaManager;
 
     constructor() {
         super({ name: 'Architect', timeout: 45000 });
         this.client = new ByteAIClient();
+        this.personaManager = new PersonaManager();
     }
 
     async execute(input: ArchitectInput): Promise<AgentOutput<ArchitectureDesign>> {
         const startTime = Date.now();
         
+        const persona = this.personaManager.getPersona('SystemArchitect');
+        
         const prompt = `
-You are a Senior Software Architect.
+${persona.systemPrompt}
+
 User Request: "${input.query}"
 Project Type: ${input.projectType || 'Generic'}
 Existing Files: ${(input.existingFiles || []).join(', ')}

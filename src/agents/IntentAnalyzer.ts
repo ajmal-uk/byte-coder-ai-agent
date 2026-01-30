@@ -4,18 +4,25 @@
  */
 
 import * as vscode from 'vscode';
+import { ByteAIClient } from '../byteAIClient';
+import { BaseAgent, AgentOutput } from '../core/AgentTypes';
 
 export interface SearchIntent {
     keywords: string[];
     codeTerms: string[];
     filePatterns: string[];
-    queryType: 'fix' | 'explain' | 'refactor' | 'test' | 'optimize' | 'security' | 'general';
+    queryType: 'fix' | 'explain' | 'refactor' | 'test' | 'optimize' | 'security' | 'general' | 'build' | 'modify' | 'command' | 'version_control' | 'web_search';
     complexity: 'simple' | 'medium' | 'complex';
     mentionedFiles: string[];
     symbols: string[];  // Function/class names extracted
+    originalQuery: string;
+    reasoning?: string;
+    confidence: number;
 }
 
-export class IntentAnalyzer {
+export class IntentAnalyzer extends BaseAgent<{ query: string }, SearchIntent> {
+    private client: ByteAIClient;
+
     // Stop words to filter from keyword extraction
     private readonly STOP_WORDS = new Set([
         'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
@@ -32,52 +39,48 @@ export class IntentAnalyzer {
 
     // Query type detection patterns
     private readonly QUERY_PATTERNS: { [key: string]: RegExp[] } = {
-        'fix': [/\bfix\b/i, /\bbug\b/i, /\berror\b/i, /\bissue\b/i, /\bproblem\b/i, /\bbroken\b/i, /\bwrong\b/i, /\bfail/i, /\bcrash/i, /\bnot working/i],
-        'explain': [/\bexplain\b/i, /\bwhat\b/i, /\bhow\b/i, /\bwhy\b/i, /\bunderstand\b/i, /\bdescribe\b/i, /\bwalk.*through\b/i, /\bwho\b/i, /\bwhere\b/i, /\bwhen\b/i],
-        'refactor': [/\brefactor\b/i, /\bimprove\b/i, /\boptimize\b/i, /\bclean\b/i, /\bbetter\b/i, /\benhance\b/i, /\brewrite\b/i],
+        'fix': [/\bfix\b/i, /\bbug\b/i, /\berror\b/i, /\bissue\b/i, /\bproblem\b/i, /\bbroken\b/i, /\bwrong\b/i, /\bfail/i, /\bcrash/i, /\bnot working/i, /\bdebug\b/i],
+        'explain': [/\bexplain\b/i, /\bwhat\b/i, /\bhow\b/i, /\bwhy\b/i, /\bunderstand\b/i, /\bdescribe\b/i, /\bwalk.*through\b/i, /\bwho\b/i, /\bwhere\b/i, /\bwhen\b/i, /\bmean\b/i],
+        'refactor': [/\brefactor\b/i, /\bimprove\b/i, /\bclean\b/i, /\bbetter\b/i, /\benhance\b/i, /\brewrite\b/i],
         'test': [/\btest\b/i, /\btests\b/i, /\bunit\b/i, /\bspec\b/i, /\bcoverage\b/i, /\bmock\b/i],
-        'optimize': [/\bperformance\b/i, /\bspeed\b/i, /\bfast\b/i, /\bslow\b/i, /\bmemory\b/i, /\befficient\b/i],
-        'security': [/\bsecurity\b/i, /\bvulnerab/i, /\bauth/i, /\bpassword\b/i, /\btoken\b/i, /\bencrypt/i, /\bsanitize\b/i]
+        'optimize': [/\bperformance\b/i, /\bspeed\b/i, /\bfast\b/i, /\bslow\b/i, /\bmemory\b/i, /\befficient\b/i, /\boptimize\b/i],
+        'security': [/\bsecurity\b/i, /\bvulnerab/i, /\bauth/i, /\bpassword\b/i, /\btoken\b/i, /\bencrypt/i, /\bsanitize\b/i, /\baudit\b/i],
+        'build': [/\bcreate\b/i, /\bbuild\b/i, /\bgenerate\b/i, /\bimplement\b/i, /\bscaffold\b/i, /\bsetup\b/i, /\bnew\b/i, /\binit\b/i],
+        'modify': [/\bchange\b/i, /\bupdate\b/i, /\bmodify\b/i, /\bedit\b/i, /\breplace\b/i, /\bremove\b/i, /\bdelete\b/i],
+        'command': [/\brun\b/i, /\bexecute\b/i, /\bcommand\b/i, /\bterminal\b/i, /\bshell\b/i, /\bnpm\b/i, /\byarn\b/i, /\bgit\b/i, /\binstall\b/i],
+        'version_control': [/\bcommit\b/i, /\bpush\b/i, /\bpull\b/i, /\bcheckpoint\b/i, /\bundo\b/i, /\brevert\b/i, /\brollback\b/i],
+        'web_search': [/\bsearch\b/i, /\bgoogle\b/i, /\bfind online\b/i, /\blookup\b/i, /\bweb\b/i]
     };
 
-    // Semantic expansion map for related terms
-    private readonly SEMANTIC_MAP: { [key: string]: string[] } = {
-        'login': ['auth', 'authentication', 'signin', 'session', 'user', 'credential'],
-        'auth': ['login', 'authentication', 'session', 'token', 'jwt', 'oauth'],
-        'error': ['exception', 'catch', 'throw', 'fail', 'bug', 'crash'],
-        'bug': ['error', 'issue', 'fix', 'problem', 'wrong', 'broken'],
-        'api': ['endpoint', 'route', 'request', 'response', 'http', 'rest', 'fetch'],
-        'database': ['db', 'sql', 'query', 'model', 'schema', 'orm', 'prisma', 'mongo'],
-        'test': ['spec', 'jest', 'mocha', 'assert', 'expect', 'mock', 'stub'],
-        'style': ['css', 'scss', 'styled', 'theme', 'color', 'layout'],
-        'config': ['configuration', 'settings', 'env', 'options', 'dotenv'],
-        'component': ['view', 'ui', 'screen', 'page', 'widget', 'element'],
-        'hook': ['useEffect', 'useState', 'useMemo', 'useCallback', 'useRef'],
-        'state': ['reducer', 'store', 'context', 'redux', 'zustand'],
-        'route': ['router', 'navigation', 'path', 'url', 'link'],
-        'service': ['client', 'api', 'http', 'provider'],
-        'controller': ['handler', 'endpoint', 'action'],
-        'message': ['chat', 'notification', 'alert', 'toast'],
-        'search': ['find', 'query', 'filter', 'lookup'],
-        'cache': ['store', 'memory', 'persist', 'storage'],
-        'validate': ['check', 'verify', 'sanitize', 'parse'],
-        'render': ['display', 'show', 'view', 'draw'],
+    // Semantic map for keyword expansion
+    private readonly SEMANTIC_MAP: Record<string, string[]> = {
+        'auth': ['login', 'signup', 'authentication', 'authorization', 'token', 'jwt', 'oauth'],
+        'database': ['db', 'sql', 'mongo', 'postgres', 'schema', 'model', 'query'],
+        'api': ['endpoint', 'route', 'controller', 'service', 'http', 'rest', 'graphql'],
+        'ui': ['component', 'view', 'screen', 'page', 'layout', 'css', 'style'],
+        'test': ['spec', 'unit', 'integration', 'e2e', 'jest', 'mocha', 'assert'],
+        'error': ['bug', 'fix', 'exception', 'stack', 'trace', 'fail', 'crash'],
+        'user': ['profile', 'account', 'member', 'customer', 'client'],
+        'config': ['setting', 'env', 'environment', 'variable', 'option', 'setup']
     };
 
-    // File type associations
-    private readonly FILE_TYPE_HINTS: { [key: string]: string[] } = {
-        'component': ['tsx', 'jsx', 'vue', 'svelte'],
-        'style': ['css', 'scss', 'sass', 'less'],
-        'config': ['json', 'yaml', 'yml', 'toml', 'ini'],
-        'test': ['spec.ts', 'test.ts', 'spec.js', 'test.js'],
-        'type': ['d.ts', 'types.ts', 'interface'],
-        'util': ['utils', 'helper', 'lib'],
-    };
+    constructor() {
+        super({ name: 'IntentAnalyzer', timeout: 20000 });
+        this.client = new ByteAIClient();
+    }
+
+    async execute(input: { query: string }): Promise<AgentOutput<SearchIntent>> {
+        const startTime = Date.now();
+        const intent = await this.analyze(input.query);
+        return this.createOutput('success', intent, 0.9, startTime);
+    }
 
     /**
      * Analyze a query and extract structured search intent
+     * Uses Heuristics first, falls back to LLM for complex queries
      */
-    public analyze(query: string): SearchIntent {
+    public async analyze(query: string): Promise<SearchIntent> {
+        // 1. Fast Heuristic Analysis
         const queryType = this.detectQueryType(query);
         const mentionedFiles = this.extractMentionedFiles(query);
         const symbols = this.extractSymbols(query);
@@ -86,16 +89,92 @@ export class IntentAnalyzer {
         const filePatterns = this.generateFilePatterns(expandedKeywords, mentionedFiles, queryType);
         const complexity = this.assessComplexity(query, keywords);
 
-        return {
+        const heuristicIntent: SearchIntent = {
             keywords: expandedKeywords,
             codeTerms: symbols,
             filePatterns,
             queryType,
             complexity,
             mentionedFiles,
-            symbols
+            symbols,
+            originalQuery: query,
+            confidence: complexity === 'simple' ? 0.9 : 0.7
+        };
+
+        // 2. If simple or high confidence, return heuristics
+        if (complexity === 'simple' && queryType !== 'general') {
+            return heuristicIntent;
+        }
+
+        // 3. For complex/vague queries, use LLM
+        try {
+            return await this.analyzeWithLLM(query, heuristicIntent);
+        } catch (error) {
+            console.warn('IntentAnalyzer LLM failed, falling back to heuristics', error);
+            return heuristicIntent;
+        }
+    }
+
+    private async analyzeWithLLM(query: string, heuristic: SearchIntent): Promise<SearchIntent> {
+        const prompt = `
+Analyze the User Query to determine intent, complexity, and search terms.
+
+User Query: "${query}"
+
+Heuristic Detection:
+- Type: ${heuristic.queryType}
+- Complexity: ${heuristic.complexity}
+- Keywords: ${heuristic.keywords.join(', ')}
+
+Classify into ONE Query Type:
+- fix: Fixing bugs, errors, issues
+- explain: Asking for explanation, understanding
+- refactor: improving code quality without changing behavior
+- test: adding or running tests
+- optimize: improving performance
+- security: security audit or fix
+- build: creating new files, features, projects
+- modify: changing existing code logic
+- command: running terminal commands
+- version_control: git operations
+- web_search: searching internet
+- general: other
+
+Determine Complexity: simple (1 file/small change), medium (multi-file/function), complex (architecture/system-wide).
+
+Extract:
+- Keywords: semantic search terms
+- FilePatterns: glob patterns for relevant files
+- Symbols: specific class/function names mentioned
+
+Output JSON ONLY:
+{
+  "queryType": "type",
+  "complexity": "simple|medium|complex",
+  "keywords": ["term1", "term2"],
+  "filePatterns": ["*.ts", "src/**"],
+  "symbols": ["funcName"],
+  "reasoning": "Brief explanation"
+}
+`;
+        const response = await this.client.generateResponse(prompt);
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return heuristic;
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        return {
+            ...heuristic,
+            queryType: parsed.queryType || heuristic.queryType,
+            complexity: parsed.complexity || heuristic.complexity,
+            keywords: [...new Set([...heuristic.keywords, ...(parsed.keywords || [])])],
+            filePatterns: [...new Set([...heuristic.filePatterns, ...(parsed.filePatterns || [])])],
+            symbols: [...new Set([...heuristic.symbols, ...(parsed.symbols || [])])],
+            reasoning: parsed.reasoning,
+            confidence: 0.95
         };
     }
+
 
     /**
      * Detect the type of query (fix, explain, refactor, etc.)
@@ -179,7 +258,7 @@ export class IntentAnalyzer {
         for (const keyword of keywords) {
             const expansions = this.SEMANTIC_MAP[keyword];
             if (expansions) {
-                expansions.forEach(e => expanded.add(e));
+                expansions.forEach((e: string) => expanded.add(e));
             }
         }
 
