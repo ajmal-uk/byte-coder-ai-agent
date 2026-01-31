@@ -30,19 +30,19 @@
 
 <table border="0" width="100%">
   <tr>
-    <td width="60%" align="center" valign="middle">
+    <td width="50%" align="center" valign="middle">
       <a href="images/screenshots/chat.png">
-        <img src="images/screenshots/chat.png" alt="Byte Coder Chat Interface" width="100%" />
+        <img src="images/screenshots/chat.png" alt="Byte Coder Chat Interface" width="400" />
       </a>
       <br/>
       <sub><b>Intelligent Chat Interface</b><br/>Context-aware conversations with your codebase</sub>
     </td>
-    <td width="40%" align="center" valign="middle">
+    <td width="50%" align="center" valign="middle">
       <table border="0">
         <tr>
           <td align="center">
             <a href="images/screenshots/history.png">
-              <img src="images/screenshots/history.png" alt="Session History" width="100%" />
+              <img src="images/screenshots/history.png" alt="Session History" width="200" />
             </a>
             <br/><sub><b>Session History</b></sub>
           </td>
@@ -51,7 +51,7 @@
           <td align="center">
             <br/>
             <a href="images/screenshots/models.png">
-              <img src="images/screenshots/models.png" alt="Model Selection" width="100%" />
+              <img src="images/screenshots/models.png" alt="Model Selection" width="200" />
             </a>
             <br/><sub><b>Model Management</b></sub>
           </td>
@@ -68,7 +68,7 @@
     <tr>
       <td align="center">
         <a href="images/screenshots/settings.png">
-          <img src="images/screenshots/settings.png" alt="Settings Interface" width="600" />
+          <img src="images/screenshots/settings.png" alt="Settings Interface" width="500" />
         </a>
         <br/>
         <sub><b>Comprehensive Configuration</b></sub>
